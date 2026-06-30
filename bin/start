@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# fleetmux start — launch a named tmux session with a canonical agent layout.
+# Usage: start [SESSION_NAME]
+# Default session name: "agents"
+#
+# Layout:
+#   Window 1 "claude"  — full window for Claude Code
+#   Window 2 "shell"   — general shell
+
+set -euo pipefail
+
+SESSION="${1:-agents}"
+
+if tmux has-session -t "$SESSION" 2>/dev/null; then
+  echo "Session '$SESSION' already exists — attaching."
+  exec tmux attach-session -t "$SESSION"
+fi
+
+# Create session with first window: claude
+tmux new-session -d -s "$SESSION" -n "claude"
+tmux send-keys -t "${SESSION}:claude" "# Run: claude" Enter
+
+# Second window: shell
+tmux new-window -t "$SESSION" -n "shell"
+
+# Select first window and attach
+tmux select-window -t "${SESSION}:claude"
+exec tmux attach-session -t "$SESSION"
