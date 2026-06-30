@@ -24,7 +24,7 @@ agent pane states automatically.
 ## Install
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/termio-xyz/fleetmux/main/bin/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/xiaolongnk/fleetmux/main/bin/install.sh)
 ```
 
 Then start tmux and press `prefix + I` to install plugins.
@@ -105,7 +105,7 @@ Edit `~/.config/tmux/scripts/agent-status.sh` — see [AGENTS.md](AGENTS.md).
 ## Upgrade
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/termio-xyz/fleetmux/main/bin/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/xiaolongnk/fleetmux/main/bin/install.sh)
 ```
 
 The installer backs up your existing config before replacing it.

@@ -81,8 +81,9 @@
 
 **Start a new agent session:**
 ```bash
-fleetmux-start        # or: bash ~/.config/tmux/../bin/start
 tmux new-session -s work
+# or use the bundled helper (run from the cloned repo):
+bash bin/start
 ```
 
 **Run Claude Code in a pane:**
@@ -97,4 +98,4 @@ Set pane title manually: `printf '\033]2;claude\033\\'`
 
 ---
 
-*In-tmux: open with `prefix + ?` · Online: https://github.com/termio-xyz/fleetmux*
+*In-tmux: open with `prefix + ?` · Online: https://github.com/xiaolongnk/fleetmux*

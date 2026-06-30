@@ -3,7 +3,7 @@
 # Working name: "fleetmux" (final name pending deeper clearance — see README).
 #
 # Usage:
-#   bash <(curl -fsSL https://raw.githubusercontent.com/termio-xyz/fleetmux/main/bin/install.sh)
+#   bash <(curl -fsSL https://raw.githubusercontent.com/xiaolongnk/fleetmux/main/bin/install.sh)
 #
 # What this does:
 #   1. Detect OS (macOS/Linux/WSL2) and install tmux if missing
@@ -16,7 +16,7 @@
 
 set -euo pipefail
 
-REPO_URL="${FLEETMUX_REPO_URL:-https://raw.githubusercontent.com/termio-xyz/fleetmux/main}"
+REPO_URL="${FLEETMUX_REPO_URL:-https://raw.githubusercontent.com/xiaolongnk/fleetmux/main}"
 TMUX_CONF_DIR="$HOME/.config/tmux"
 TMUX_CONF_FILE="$TMUX_CONF_DIR/tmux.conf"
 TMUX_CONF_LINK="$HOME/.tmux.conf"
