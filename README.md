@@ -1,8 +1,5 @@
 # fleetmux
 
-> **Working name.** The name "fleetmux" has not been registered or published publicly yet —
-> final name clearance is in progress. Do not distribute or link to this repo until the name is confirmed.
-
 **The agent-native tmux distribution.** A complete, opinionated tmux setup for developers
 running AI coding agents. One command. Looks great out of the box. Status bar surfaces
 agent pane states automatically.
@@ -27,7 +24,7 @@ agent pane states automatically.
 bash <(curl -fsSL https://raw.githubusercontent.com/xiaolongnk/fleetmux/main/bin/install.sh)
 ```
 
-Then start tmux and press `prefix + I` to install plugins.
+Then start tmux and press `prefix + I` to install plugins, or use `fleetmux-start` to launch a pre-configured session.
 
 **Requirements:** tmux ≥ 3.2, git (for TPM), curl.
 The installer auto-installs tmux on macOS (Homebrew), Debian/Ubuntu (`apt`), and Fedora (`dnf`).
@@ -42,8 +39,8 @@ Windows native: not supported. Use WSL2.
 |-----------|-------------|
 | `tmux/tmux.conf` | Full config: TPM, 4 plugins, agent-aware status bar, keybindings |
 | `tmux/scripts/agent-status.sh` | Probes pane titles for Claude/Cursor/Gemini; drives the status bar |
-| `bin/install.sh` | Idempotent installer: backs up config, installs TPM, links config |
-| `bin/start` | Launches a named session with Claude + Shell windows |
+| `bin/install.sh` | Idempotent installer: backs up config, installs TPM, Starship, Nerd Font, links config |
+| `bin/start` | Launches a named session with Claude + Shell windows — installed as `fleetmux-start` |
 | `CHEATSHEET.md` | Full key-binding reference (also accessible via `prefix + ?`) |
 | `AGENTS.md` | How pane-title detection works and how to customize it |
 
