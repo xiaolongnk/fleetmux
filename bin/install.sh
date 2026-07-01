@@ -11,8 +11,8 @@
 #   --no-font         Skip Nerd Font
 #   --yes, -y         Auto-confirm all prompts (CI / headless)
 #
-# Flags (v2 — coming soon, accepted but not yet active):
-#   --with-fish       Opt in to Fish shell installation
+# Flags (v2 — opt-in, high-invasiveness components):
+#   --with-fish       Opt in to Fish shell installation (changes login shell via chsh)
 #   --with-ghostty    Opt in to Ghostty terminal installation
 #   --full            All components (tmux + starship + font + fish + ghostty)
 
@@ -86,14 +86,9 @@ for arg in "$@"; do
   esac
 done
 
-# v2 flag stubs — accept gracefully, print notice, continue with v1 profile
-if $OPT_WITH_FISH || $OPT_WITH_GHOSTTY || $OPT_FULL; then
-  printf '\n  %s• v2 flags detected — coming in fleetmux v2:%s\n' "$C_BLUE" "$C_RESET"
-  # shellcheck disable=SC2016
-  $OPT_WITH_FISH    && printf '     --with-fish    → Fish shell support (opt-in, changes $SHELL)\n'
-  $OPT_WITH_GHOSTTY && printf '     --with-ghostty → Ghostty terminal support (macOS/Linux opt-in)\n'
-  $OPT_FULL         && printf '     --full         → Full profile including fish + ghostty\n'
-  printf '  Continuing with v1 profile: tmux + starship + nerd font.\n'
+if $OPT_FULL; then
+  OPT_WITH_FISH=true
+  OPT_WITH_GHOSTTY=true
 fi
 
 IS_TTY=false
@@ -460,8 +455,165 @@ fi # end: ! $OPT_NO_FONT
 
 fi # end: ! $OPT_MINIMAL
 
-# ── step 9: install fleetmux-start on PATH ────────────────────────────────────
-step "Step 9 — Install fleetmux-start"
+# ── step 9: Fish shell (strict opt-in) ────────────────────────────────────────
+step "Step 9 — Fish shell (opt-in)"
+if $OPT_WITH_FISH; then
+  if command -v fish >/dev/null 2>&1; then
+    ok "Fish already installed ($(fish --version 2>/dev/null))"
+  else
+    info "Installing Fish shell…"
+    case "$OS_KIND" in
+      Darwin)
+        if command -v brew >/dev/null 2>&1; then
+          brew install fish
+        else
+          fail "Homebrew is required to install Fish on macOS. Install from https://brew.sh then re-run."
+        fi
+        ;;
+      Linux)
+        LINUX_ID=""
+        if [ -r /etc/os-release ]; then
+          # shellcheck disable=SC1091
+          . /etc/os-release
+          LINUX_ID="${ID:-}"
+        fi
+        case "$LINUX_ID" in
+          ubuntu|debian)      sudo apt-get update -qq && sudo apt-get install -y fish ;;
+          fedora)             sudo dnf install -y fish ;;
+          rhel|centos)        sudo yum install -y fish ;;
+          *)                  fail "Unknown Linux distro '${LINUX_ID:-unknown}'. Install fish manually: https://fishshell.com/" ;;
+        esac
+        ;;
+    esac
+    ok "Fish installed ($(fish --version 2>/dev/null))"
+  fi
+
+  FISH_PATH="$(command -v fish)"
+  CURRENT_LOGIN_SHELL="$(basename "${SHELL:-}")"
+
+  if [ "$CURRENT_LOGIN_SHELL" = "fish" ]; then
+    ok "Already using fish as login shell — skipping chsh"
+  else
+    warn "Changing your login shell to fish. Your bash/zsh aliases/functions are NOT auto-migrated."
+    warn "Revert anytime: chsh -s ${SHELL:-/bin/bash}"
+
+    if ! grep -qxF "$FISH_PATH" /etc/shells 2>/dev/null; then
+      if command -v sudo >/dev/null 2>&1 && sudo sh -c "echo '$FISH_PATH' >> /etc/shells" 2>/dev/null; then
+        ok "Registered $FISH_PATH in /etc/shells"
+      else
+        warn "Could not register $FISH_PATH in /etc/shells — chsh may fail."
+        warn "Manual: sudo sh -c \"echo $FISH_PATH >> /etc/shells\""
+      fi
+    fi
+
+    DO_CHSH=false
+    if $OPT_YES; then
+      DO_CHSH=true
+    elif $IS_TTY; then
+      printf '  Change login shell to fish now? [y/N]: '
+      read -r FISH_CHSH_ANS
+      case "${FISH_CHSH_ANS:-N}" in [Yy]*) DO_CHSH=true ;; esac
+    else
+      warn "Non-interactive without --yes — skipping chsh. Run manually: chsh -s $FISH_PATH"
+    fi
+
+    if $DO_CHSH; then
+      if chsh -s "$FISH_PATH" 2>/dev/null; then
+        ok "Login shell changed to fish ($FISH_PATH). Restart your terminal to take effect."
+      else
+        warn "chsh failed — change manually: chsh -s $FISH_PATH"
+      fi
+    fi
+  fi
+
+  if [ -d "$HOME/.config/fish" ]; then
+    ok "Existing ~/.config/fish left untouched (fleetmux ships no fish config preset)"
+  fi
+  info "Starship + Nerd Font already configured above will work under fish automatically."
+else
+  info "Fish shell not requested (use --with-fish or --full to opt in)"
+fi
+
+# ── step 10: Ghostty terminal (strict opt-in) ─────────────────────────────────
+step "Step 10 — Ghostty terminal (opt-in)"
+if $OPT_WITH_GHOSTTY; then
+  if $IN_WSL; then
+    warn "Ghostty has no native Windows build — skipping inside WSL2. Install it on the Windows host instead."
+  else
+    GHOSTTY_INSTALLED=false
+    if [ "$OS_KIND" = "Darwin" ] && [ -d "/Applications/Ghostty.app" ]; then
+      GHOSTTY_INSTALLED=true
+    elif command -v ghostty >/dev/null 2>&1; then
+      GHOSTTY_INSTALLED=true
+    fi
+
+    if $GHOSTTY_INSTALLED; then
+      ok "Ghostty already installed — skipping install"
+    else
+      case "$OS_KIND" in
+        Darwin)
+          if command -v brew >/dev/null 2>&1; then
+            info "Installing Ghostty via Homebrew…"
+            if brew install --cask ghostty 2>/dev/null; then
+              ok "Ghostty installed"
+              GHOSTTY_INSTALLED=true
+            else
+              warn "Homebrew cask install failed. Download manually: https://ghostty.org/download"
+            fi
+          else
+            warn "Homebrew is required to install Ghostty on macOS. Install from https://brew.sh, or download manually: https://ghostty.org/download"
+          fi
+          ;;
+        Linux)
+          LINUX_ID=""
+          if [ -r /etc/os-release ]; then
+            # shellcheck disable=SC1091
+            . /etc/os-release
+            LINUX_ID="${ID:-}"
+          fi
+          if [ "$LINUX_ID" = "fedora" ] && command -v dnf >/dev/null 2>&1; then
+            info "Installing Ghostty via dnf…"
+            if sudo dnf install -y ghostty 2>/dev/null; then
+              ok "Ghostty installed"
+              GHOSTTY_INSTALLED=true
+            else
+              warn "dnf install failed. Download manually: https://ghostty.org/download"
+            fi
+          else
+            warn "No automated Ghostty install for this distro yet. Install manually: https://ghostty.org/download"
+          fi
+          ;;
+      esac
+    fi
+
+    if $GHOSTTY_INSTALLED; then
+      GHOSTTY_CONF="$HOME/.config/ghostty/config"
+      GHOSTTY_CONF_PRESET=$(cat <<'CFG'
+# fleetmux-managed — generated by fleetmux installer
+# Customize at ~/.config/ghostty/config — see https://ghostty.org/docs/config
+font-family = JetBrainsMono Nerd Font
+cursor-style = block
+shell-integration = detect
+mouse-hide-while-typing = true
+CFG
+)
+      mkdir -p "$(dirname "$GHOSTTY_CONF")"
+      if [ -f "$GHOSTTY_CONF" ] && ! grep -q "$FLEETMUX_SENTINEL" "$GHOSTTY_CONF" 2>/dev/null; then
+        TS="$(_ts)"
+        cp "$GHOSTTY_CONF" "${GHOSTTY_CONF}.bak-${TS}"
+        warn "Backed up existing $GHOSTTY_CONF → ${GHOSTTY_CONF}.bak-${TS}"
+      fi
+      printf '%s\n' "$GHOSTTY_CONF_PRESET" > "$GHOSTTY_CONF"
+      ok "Ghostty config installed: $GHOSTTY_CONF"
+      info "Set Ghostty as your default terminal via System Settings > Default Terminal (not done automatically)."
+    fi
+  fi
+else
+  info "Ghostty not requested (use --with-ghostty or --full to opt in)"
+fi
+
+# ── step 11: install fleetmux-start on PATH ───────────────────────────────────
+step "Step 11 — Install fleetmux-start"
 mkdir -p "$LOCAL_BIN"
 FMUX_START_DEST="$LOCAL_BIN/fleetmux-start"
 
@@ -478,7 +630,7 @@ if ! printf '%s' "$PATH" | tr ':' '\n' | grep -qxF "$LOCAL_BIN" 2>/dev/null; the
   warn "  export PATH=\"\$HOME/.local/bin:\$PATH\""
 fi
 
-# ── step 10: done ─────────────────────────────────────────────────────────────
+# ── step 12: done ─────────────────────────────────────────────────────────────
 step "Done"
 printf '\n  %s✅ fleetmux installed.%s\n\n' "$C_GREEN" "$C_RESET"
 printf '  %sWhat was installed:%s\n' "$C_BOLD" "$C_RESET"
@@ -488,6 +640,12 @@ if ! $OPT_MINIMAL && ! $OPT_NO_STARSHIP; then
 fi
 if ! $OPT_MINIMAL && ! $OPT_NO_FONT; then
   printf '    • JetBrains Mono Nerd Font\n'
+fi
+if $OPT_WITH_FISH; then
+  printf '    • Fish shell                     %s\n' "$(command -v fish 2>/dev/null)"
+fi
+if $OPT_WITH_GHOSTTY && [ -f "$HOME/.config/ghostty/config" ]; then
+  printf '    • Ghostty config                 %s\n' "$HOME/.config/ghostty/config"
 fi
 printf '    • fleetmux-start                 %s\n' "$FMUX_START_DEST"
 
