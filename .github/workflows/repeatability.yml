@@ -1,0 +1,28 @@
+name: Repeatability
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  repeatability:
+    # macOS-only for now — the test exercises the Darwin detection paths
+    # (fixed-path brew/tmux/starship checks) that matter most; Linux
+    # coverage can be added as a matrix entry if a Linux-specific regression
+    # ever needs one.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shellcheck
+        run: |
+          brew list shellcheck >/dev/null 2>&1 || brew install shellcheck
+          shellcheck -S warning bin/install.sh test/repeatability.sh
+
+      - name: Bash syntax check
+        run: bash -n bin/install.sh
+
+      - name: Repeatability test (run install.sh twice, diff state)
+        run: bash test/repeatability.sh
