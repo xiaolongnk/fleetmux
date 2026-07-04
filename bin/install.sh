@@ -219,6 +219,79 @@ if [ -f /proc/version ] && grep -qi 'microsoft\|wsl' /proc/version 2>/dev/null; 
   IN_WSL=true
 fi
 
+# ── shared: fixed-path binary detection ───────────────────────────────────────
+# `command -v` alone only sees what's on THIS process's PATH — which is
+# incomplete in two real cases: (1) this script runs as a non-login,
+# non-interactive shell (`bash <(curl ...)` does NOT source .zprofile/
+# .bash_profile, so a Homebrew-provided binary can be genuinely installed yet
+# invisible here), and (2) a component was installed by some OTHER method
+# (starship's own curl installer defaults to ~/.local/bin; a user's own
+# manual install could be anywhere). Every per-component detect->skip check
+# below uses this instead of a bare `command -v` so "already installed" is
+# answered by REALITY, not by "is it on PATH in this exact process" — the
+# distinction that matters for never reinstalling something that's already
+# there under a different install method.
+# Echoes the resolved absolute path (PATH first, then each fixed candidate in
+# order) and returns 0, or returns 1 if none resolve. `_binary_present`
+# below is the boolean-only convenience wrapper most call sites want.
+_resolve_bin() {
+  local name="$1"
+  shift
+  if command -v "$name" >/dev/null 2>&1; then
+    command -v "$name"
+    return 0
+  fi
+  for path in "$@"; do
+    if [ -x "$path" ]; then
+      printf '%s\n' "$path"
+      return 0
+    fi
+  done
+  return 1
+}
+
+_binary_present() {
+  _resolve_bin "$@" >/dev/null
+}
+
+_brew_candidates() {
+  printf '%s\n' "/opt/homebrew/bin/brew" "/usr/local/bin/brew"
+}
+
+# Resolves an ALREADY-installed Homebrew into THIS process's PATH (see the
+# non-login-shell note above) — every later `command -v brew`/`tmux`/
+# `starship`/`fish` check in this script benefits once shellenv is sourced.
+# Idempotent no-op if brew is already on PATH or genuinely absent.
+_resolve_brew_path() {
+  command -v brew >/dev/null 2>&1 && return 0
+  for candidate in $(_brew_candidates); do
+    if [ -x "$candidate" ]; then
+      eval "$("$candidate" shellenv)"
+      return 0
+    fi
+  done
+  return 1
+}
+_resolve_brew_path || true
+
+# ── step 0: Homebrew bootstrap (macOS only — Linux package managers don't
+# need it) ─────────────────────────────────────────────────────────────────
+if [ "$OS_KIND" = "Darwin" ]; then
+  step "Step 0 — Homebrew"
+  if command -v brew >/dev/null 2>&1; then
+    ok "Homebrew already installed ($(brew --version | head -1))"
+  else
+    info "Homebrew not found — installing it now via Homebrew's OFFICIAL installer (https://brew.sh)."
+    warn "This may prompt for YOUR MAC PASSWORD, in THIS terminal. fleetmux never"
+    warn "captures, automates, or scripts past that prompt — it's Homebrew's own,"
+    warn "unmodified installer; type your password only if and when Homebrew itself asks."
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    _resolve_brew_path || true
+    command -v brew >/dev/null 2>&1 || fail "Homebrew install finished but 'brew' is still not on PATH. Open a new terminal and re-run."
+    ok "Homebrew installed ($(brew --version | head -1))"
+  fi
+fi
+
 # ── step 1: OS detect + tmux install ─────────────────────────────────────────
 step "Step 1 — Detect OS and install tmux"
 
@@ -226,7 +299,7 @@ _install_tmux_macos() {
   if command -v brew >/dev/null 2>&1; then
     brew install tmux
   else
-    fail "Homebrew is required to install tmux on macOS. Install from https://brew.sh then re-run."
+    fail "Homebrew is required to install tmux on macOS but wasn't found even after the bootstrap step. Install from https://brew.sh then re-run."
   fi
 }
 
@@ -248,14 +321,17 @@ _install_tmux_fedora() {
   fi
 }
 
+TMUX_FIXED_PATHS="/opt/homebrew/bin/tmux /usr/local/bin/tmux /usr/bin/tmux"
+
 case "$OS_KIND" in
   Darwin)
     ok "macOS"
-    if ! command -v tmux >/dev/null 2>&1; then
+    if ! _binary_present tmux $TMUX_FIXED_PATHS; then
       info "Installing tmux via Homebrew…"
       _install_tmux_macos
     else
-      ok "tmux already installed ($(tmux -V))"
+      TMUX_BIN="$(_resolve_bin tmux $TMUX_FIXED_PATHS)"
+      ok "tmux already installed ✓ ($("$TMUX_BIN" -V))"
     fi
     ;;
   Linux)
@@ -265,7 +341,7 @@ case "$OS_KIND" in
     else
       ok "Linux"
     fi
-    if ! command -v tmux >/dev/null 2>&1; then
+    if ! _binary_present tmux $TMUX_FIXED_PATHS; then
       info "Installing tmux…"
       LINUX_ID=""
       if [ -r /etc/os-release ]; then
@@ -282,7 +358,8 @@ case "$OS_KIND" in
           ;;
       esac
     else
-      ok "tmux already installed ($(tmux -V))"
+      TMUX_BIN="$(_resolve_bin tmux $TMUX_FIXED_PATHS)"
+      ok "tmux already installed ✓ ($("$TMUX_BIN" -V))"
     fi
     ;;
   *)
@@ -291,8 +368,17 @@ case "$OS_KIND" in
     ;;
 esac
 
+# Resolve tmux's bin path AGAIN here, unconditionally — covers the
+# fresh-install branches above (which don't set TMUX_BIN themselves) and is a
+# harmless re-resolve for the already-installed branches that did. A tmux
+# found ONLY via a fixed path (not brew, so no shellenv to put it on PATH —
+# e.g. apt/manual-compile/MacPorts installs) must not fall through to a bare
+# `tmux` call below, which would fail with "command not found" even though
+# tmux genuinely exists.
+TMUX_BIN="$(_resolve_bin tmux $TMUX_FIXED_PATHS)" || fail "tmux install appeared to succeed but the binary still can't be found."
+
 # Verify tmux version
-TMUX_VER_RAW="$(tmux -V 2>/dev/null | awk '{print $2}')"
+TMUX_VER_RAW="$("$TMUX_BIN" -V 2>/dev/null | awk '{print $2}')"
 TMUX_MAJOR="$(echo "$TMUX_VER_RAW" | cut -d. -f1 | tr -dc '0-9')"
 TMUX_MINOR="$(echo "$TMUX_VER_RAW" | cut -d. -f2 | tr -dc '0-9')"
 TMUX_MAJOR="${TMUX_MAJOR:-0}"; TMUX_MINOR="${TMUX_MINOR:-0}"
@@ -386,8 +472,10 @@ step "Step 7 — Starship prompt"
 if $OPT_NO_STARSHIP; then
   info "--no-starship: skipping Starship"
 else
-  if command -v starship >/dev/null 2>&1; then
-    ok "Starship already installed ($(starship --version 2>/dev/null | head -1))"
+  STARSHIP_FIXED_PATHS="/opt/homebrew/bin/starship /usr/local/bin/starship $HOME/.local/bin/starship /usr/bin/starship"
+  if _binary_present starship $STARSHIP_FIXED_PATHS; then
+    STARSHIP_BIN="$(_resolve_bin starship $STARSHIP_FIXED_PATHS)"
+    ok "Starship already installed ✓ ($("$STARSHIP_BIN" --version 2>/dev/null | head -1))"
   else
     info "Installing Starship…"
     case "$OS_KIND" in
@@ -574,8 +662,10 @@ fi # end: ! $OPT_MINIMAL
 # ── step 9: Fish shell (strict opt-in) ────────────────────────────────────────
 step "Step 9 — Fish shell (opt-in)"
 if $OPT_WITH_FISH; then
-  if command -v fish >/dev/null 2>&1; then
-    ok "Fish already installed ($(fish --version 2>/dev/null))"
+  FISH_FIXED_PATHS="/opt/homebrew/bin/fish /usr/local/bin/fish /usr/bin/fish"
+  if _binary_present fish $FISH_FIXED_PATHS; then
+    FISH_BIN_EXISTING="$(_resolve_bin fish $FISH_FIXED_PATHS)"
+    ok "Fish already installed ✓ ($("$FISH_BIN_EXISTING" --version 2>/dev/null))"
   else
     info "Installing Fish shell…"
     case "$OS_KIND" in
@@ -583,7 +673,7 @@ if $OPT_WITH_FISH; then
         if command -v brew >/dev/null 2>&1; then
           brew install fish
         else
-          fail "Homebrew is required to install Fish on macOS. Install from https://brew.sh then re-run."
+          fail "Homebrew is required to install Fish on macOS but wasn't found even after the bootstrap step. Install from https://brew.sh then re-run."
         fi
         ;;
       Linux)
@@ -604,7 +694,7 @@ if $OPT_WITH_FISH; then
     ok "Fish installed ($(fish --version 2>/dev/null))"
   fi
 
-  FISH_PATH="$(command -v fish)"
+  FISH_PATH="$(_resolve_bin fish $FISH_FIXED_PATHS)"
   CURRENT_LOGIN_SHELL="$(basename "${SHELL:-}")"
 
   if [ "$CURRENT_LOGIN_SHELL" = "fish" ]; then
@@ -664,7 +754,7 @@ if $OPT_WITH_GHOSTTY; then
     fi
 
     if $GHOSTTY_INSTALLED; then
-      ok "Ghostty already installed — skipping install"
+      ok "Ghostty already installed ✓ — skipping install"
     else
       case "$OS_KIND" in
         Darwin)
@@ -677,7 +767,7 @@ if $OPT_WITH_GHOSTTY; then
               warn "Homebrew cask install failed. Download manually: https://ghostty.org/download"
             fi
           else
-            warn "Homebrew is required to install Ghostty on macOS. Install from https://brew.sh, or download manually: https://ghostty.org/download"
+            warn "Homebrew is required to install Ghostty on macOS but wasn't found even after the bootstrap step. Install from https://brew.sh, or download manually: https://ghostty.org/download"
           fi
           ;;
         Linux)
