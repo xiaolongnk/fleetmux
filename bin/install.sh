@@ -5,6 +5,14 @@
 # Usage:
 #   bash <(curl -fsSL https://raw.githubusercontent.com/xiaolongnk/fleetmux/main/bin/install.sh) [OPTIONS]
 #
+# v1.2: bootstraps Homebrew itself on macOS if missing (Step 0 — runs
+# Homebrew's own official installer, may prompt for your password in this
+# terminal). Every component (tmux/Starship/Fish/Ghostty) is detected via
+# BOTH PATH and common fixed install locations before installing anything —
+# never reinstalled/upgraded without an explicit re-run. Running this script
+# N times converges to the same end state; enforced by test/repeatability.sh
+# in CI.
+#
 # Flags (v1):
 #   --minimal         tmux + TPM only (skip Starship, Nerd Font)
 #   --no-starship     Skip Starship prompt

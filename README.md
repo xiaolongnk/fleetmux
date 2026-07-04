@@ -26,10 +26,30 @@ bash <(curl -fsSL https://raw.githubusercontent.com/xiaolongnk/fleetmux/main/bin
 
 Then start tmux and press `prefix + I` to install plugins, or use `fleetmux-start` to launch a pre-configured session.
 
-**Requirements:** tmux ≥ 3.2, git (for TPM), curl.
-The installer auto-installs tmux on macOS (Homebrew), Debian/Ubuntu (`apt`), and Fedora (`dnf`).
+**Requirements:** git (for TPM), curl. Nothing else — on macOS, if Homebrew itself
+is missing, the installer bootstraps it for you (see below); tmux/starship/fish/
+Ghostty are all installed through it. Debian/Ubuntu (`apt`) and Fedora (`dnf`)
+use their native package manager instead — no Homebrew needed there.
 WSL2: works — see [AGENTS.md](AGENTS.md#wsl2-notes) for pane-title caveats.
 Windows native: not supported. Use WSL2.
+
+**Homebrew bootstrap (macOS):** if `brew` isn't found, Step 0 runs Homebrew's own,
+unmodified official installer (the same one at [brew.sh](https://brew.sh)) —
+this may prompt for **your Mac password, in that terminal window**. fleetmux
+never captures, scripts, or automates past that prompt; it's exactly the same
+interactive install you'd get running Homebrew's installer yourself.
+
+**Every component is detect-then-skip, never reinstalled without asking:**
+tmux, Starship, and Fish are each checked against BOTH your `PATH` and their
+common fixed install locations (not just `command -v`) before installing
+anything — so a tmux from `apt`, a Starship from its own curl installer, or a
+Fish you set up manually is correctly recognized as "already installed ✓" and
+left alone, exactly like Ghostty's existing `/Applications/Ghostty.app` check.
+Nothing is ever upgraded or reinstalled without an explicit re-run choosing to
+do so. Running the installer twice in a row is a guaranteed no-op past the
+first run — this is enforced by an automated CI test (`test/repeatability.sh`,
+run.sh runs `install.sh` twice and diffs the resulting state + install-call
+log) on every push.
 
 ---
 
