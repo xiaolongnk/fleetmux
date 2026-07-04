@@ -109,6 +109,32 @@ The installer backs up your existing config before replacing it.
 
 ---
 
+## Uninstall
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/xiaolongnk/fleetmux/main/bin/install.sh) --uninstall
+```
+
+Removes everything fleetmux wrote — the config it manages (detected via its own
+`# fleetmux-managed` marker, so a config you wrote yourself at the same path is
+never touched), TPM, `fleetmux-start`, and the init lines it appended to your
+shell RC. It does **not** uninstall the tmux/starship/fish/ghostty *binaries*
+(you may still want them for other things) and does not revert `chsh` — both
+are printed as explicit one-line commands for you to run instead of guessed at
+automatically. Timestamped `*.bak-*` backups from earlier installs are left in
+place; the command prints how many it found.
+
+---
+
+## Troubleshooting
+
+**My terminal looks frozen after scrolling with the mouse.** This is tmux's
+own scrollback view ("copy mode") — expected behavior when `mouse on` is set,
+not a hang. The status bar shows a `📜 COPY MODE` banner while it's active.
+Press `q`, `Esc`, or `Ctrl-c` to get back to your shell; nothing is lost.
+
+---
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

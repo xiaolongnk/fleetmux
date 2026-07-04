@@ -15,6 +15,22 @@
 #   --with-fish       Opt in to Fish shell installation (changes login shell via chsh)
 #   --with-ghostty    Opt in to Ghostty terminal installation
 #   --full            All components (tmux + starship + font + fish + ghostty)
+#
+# Flags (v2.1 — removal):
+#   --uninstall       Remove everything fleetmux installed/wrote (see below).
+#                      Never touches your Homebrew/apt-installed BINARIES
+#                      (tmux/starship/fish/ghostty stay — uninstalling a
+#                      terminal multiplexer a user may depend on for OTHER
+#                      sessions is not this flag's call to make); removes only
+#                      what fleetmux itself wrote: the config symlink/files it
+#                      manages (detected via the `# fleetmux-managed` sentinel
+#                      — never a file without it), TPM, fleetmux-start, and
+#                      the shell-RC init lines it appended. Timestamped
+#                      `.bak-*` backups from earlier runs are left in place
+#                      and printed so you can restore your PRE-fleetmux config
+#                      by hand. Does NOT revert `chsh` — printed instead as an
+#                      explicit one-line command, since guessing your prior
+#                      shell is unsafe to automate.
 
 set -euo pipefail
 
@@ -72,6 +88,7 @@ OPT_YES=false
 OPT_WITH_FISH=false
 OPT_WITH_GHOSTTY=false
 OPT_FULL=false
+OPT_UNINSTALL=false
 
 for arg in "$@"; do
   case "$arg" in
@@ -82,6 +99,7 @@ for arg in "$@"; do
     --with-fish)    OPT_WITH_FISH=true ;;
     --with-ghostty) OPT_WITH_GHOSTTY=true ;;
     --full)         OPT_FULL=true ;;
+    --uninstall)    OPT_UNINSTALL=true ;;
     *)              warn "Unknown flag: $arg (ignoring)" ;;
   esac
 done
@@ -95,6 +113,104 @@ IS_TTY=false
 [ -t 0 ] && IS_TTY=true
 
 printf '\n  %sfleetmux installer%s — agent-native terminal environment\n\n' "$C_BOLD" "$C_RESET"
+
+# ── uninstall path (v2.1) — exits, never falls through to install steps ──────
+if $OPT_UNINSTALL; then
+  step "Removing fleetmux"
+
+  # tmux config: the SENTINEL in the target file is the sole authority for
+  # "is this ours" — matches install.sh's own backup logic above (step 3),
+  # which also gates on the sentinel, not the symlink shape. A user who
+  # independently symlinked ~/.tmux.conf -> ~/.config/tmux/tmux.conf as their
+  # OWN convention (same path fleetmux happens to use) must keep BOTH the
+  # symlink and the file — matching on symlink-target-path alone (without the
+  # sentinel check) would delete a live shortcut to a file we correctly leave
+  # untouched, orphaning the user's config from their expected path.
+  TMUX_CONF_IS_OURS=false
+  if [ -f "$TMUX_CONF_FILE" ] && grep -qF "$FLEETMUX_SENTINEL" "$TMUX_CONF_FILE" 2>/dev/null; then
+    TMUX_CONF_IS_OURS=true
+  fi
+  if $TMUX_CONF_IS_OURS && [ -L "$TMUX_CONF_LINK" ] && [ "$(readlink "$TMUX_CONF_LINK")" = "$TMUX_CONF_FILE" ]; then
+    rm "$TMUX_CONF_LINK"
+    ok "Removed symlink: $TMUX_CONF_LINK"
+  else
+    info "$TMUX_CONF_LINK is not fleetmux's symlink — left alone"
+  fi
+  if $TMUX_CONF_IS_OURS; then
+    rm "$TMUX_CONF_FILE"
+    ok "Removed: $TMUX_CONF_FILE"
+  fi
+  if [ -f "$TMUX_CONF_DIR/scripts/agent-status.sh" ] || [ -f "$TMUX_CONF_DIR/scripts/firstrun-popup.sh" ] || [ -f "$TMUX_CONF_DIR/scripts/firstrun-show.sh" ]; then
+    rm -f "$TMUX_CONF_DIR/scripts/agent-status.sh" "$TMUX_CONF_DIR/scripts/firstrun-popup.sh" "$TMUX_CONF_DIR/scripts/firstrun-show.sh"
+    ok "Removed fleetmux helper scripts from $TMUX_CONF_DIR/scripts"
+  fi
+  [ -f "$TMUX_CONF_DIR/CHEATSHEET.md" ] && rm -f "$TMUX_CONF_DIR/CHEATSHEET.md"
+
+  # TPM + plugins fleetmux installed (only if TPM itself is present — never
+  # touches a TPM the user set up independently for a DIFFERENT config).
+  if [ -d "$TPM_DIR" ]; then
+    rm -rf "$HOME/.tmux/plugins"
+    ok "Removed TPM + plugins: $HOME/.tmux/plugins"
+  fi
+
+  # Starship config: only if it's our sentinel-marked file; a `.fleetmux`
+  # reference copy (written when the user chose [K]eep during install) is
+  # also ours to remove. Never touches a config that kept the user's own.
+  if [ -f "$STARSHIP_CONF" ] && grep -qF "$FLEETMUX_SENTINEL" "$STARSHIP_CONF" 2>/dev/null; then
+    rm -f "$STARSHIP_CONF"
+    ok "Removed: $STARSHIP_CONF"
+  fi
+  rm -f "${STARSHIP_CONF}.fleetmux"
+
+  # Shell RC init lines: remove exactly the two lines we appended (sentinel
+  # comment + the eval line immediately after it) — never touches anything
+  # else in the user's rc file.
+  _strip_sentinel_block() {
+    local rc_file="$1"
+    [ -f "$rc_file" ] || return 0
+    if grep -qF "$FLEETMUX_SENTINEL" "$rc_file" 2>/dev/null; then
+      local tmp
+      tmp="$(mktemp)"
+      awk -v sentinel="$FLEETMUX_SENTINEL" '
+        $0 == sentinel { skip = 2; next }
+        skip > 0 { skip--; next }
+        { print }
+      ' "$rc_file" > "$tmp"
+      mv "$tmp" "$rc_file"
+      ok "Removed fleetmux init lines from $rc_file"
+    fi
+  }
+  _strip_sentinel_block "$HOME/.bashrc"
+  _strip_sentinel_block "$HOME/.zshrc"
+
+  # Ghostty config: only the fleetmux-managed file; app/binary is left alone.
+  GHOSTTY_CONF="$HOME/.config/ghostty/config"
+  if [ -f "$GHOSTTY_CONF" ] && grep -qF "$FLEETMUX_SENTINEL" "$GHOSTTY_CONF" 2>/dev/null; then
+    rm -f "$GHOSTTY_CONF"
+    ok "Removed: $GHOSTTY_CONF"
+  fi
+
+  # fleetmux-start
+  if [ -f "$LOCAL_BIN/fleetmux-start" ]; then
+    rm -f "$LOCAL_BIN/fleetmux-start"
+    ok "Removed: $LOCAL_BIN/fleetmux-start"
+  fi
+
+  printf '\n  %sfleetmux removed.%s\n\n' "$C_GREEN" "$C_RESET"
+  echo "  Left in place (fleetmux never removes these automatically):"
+  echo "    • tmux / starship / fish / ghostty BINARIES — uninstall yourself via"
+  echo "      brew/apt/dnf if you no longer want them for anything else"
+  BAK_COUNT="$(find "$HOME" -maxdepth 3 -name '*.bak-*' 2>/dev/null | grep -cE '\.(bak)-[0-9]{14}$' || true)"
+  if [ "${BAK_COUNT:-0}" -gt 0 ]; then
+    echo "    • ${BAK_COUNT} timestamped backup(s) of your pre-fleetmux config(s) — find with:"
+    echo "        find \"\$HOME\" -maxdepth 3 -name '*.bak-*'"
+  fi
+  CURRENT_LOGIN_SHELL="$(basename "${SHELL:-}")"
+  if [ "$CURRENT_LOGIN_SHELL" = "fish" ]; then
+    echo "    • your login shell is still fish — revert with: chsh -s /bin/bash  (or your prior shell)"
+  fi
+  exit 0
+fi
 
 # ── OS detect ─────────────────────────────────────────────────────────────────
 OS_KIND="$(uname -s)"

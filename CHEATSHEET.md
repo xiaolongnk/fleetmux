@@ -49,10 +49,14 @@
 
 ## Copy mode
 
+`mouse on` means a wheel-scroll ALSO enters copy mode automatically (not just
+`prefix + [`) — the status bar shows a `📜 COPY MODE` banner while it's
+active, so a scroll that "froze" your terminal is just this, not a hang.
+
 | Key | Action |
 |-----|--------|
 | `prefix + [` | Enter copy mode (scroll with arrows or vim keys) |
-| `q` | Exit copy mode |
+| `q` / `Esc` / `Ctrl-c` | Exit copy mode — any of the three works |
 | `Space` | Start selection |
 | `Enter` | Copy selection (tmux-yank also copies to system clipboard) |
 
