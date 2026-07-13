@@ -148,10 +148,11 @@ place; the command prints how many it found.
 
 ## Troubleshooting
 
-**My terminal looks frozen after scrolling with the mouse.** This is tmux's
-own scrollback view ("copy mode") — expected behavior when `mouse on` is set,
-not a hang. The status bar shows a `📜 COPY MODE` banner while it's active.
-Press `q`, `Esc`, or `Ctrl-c` to get back to your shell; nothing is lost.
+**My terminal looks frozen after `prefix + [`.** This is tmux's own
+scrollback view ("copy mode"), not a hang — the status bar shows a
+`📜 COPY MODE` banner while it's active. Press `q`, `Esc`, or `Ctrl-c` to get
+back to your shell; nothing is lost. (A mouse-wheel scroll no longer
+auto-enters copy mode — only the deliberate `prefix + [` does.)
 
 ---
 
