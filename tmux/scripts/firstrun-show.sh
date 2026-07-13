@@ -4,7 +4,7 @@
 
 cat << 'EOF'
 
-  fleetmux — Quick Start                   prefix = Ctrl-b
+  fleetmux — Quick Start                   prefix = Ctrl-q
 
   ─────────────────────────────────────────────────────────────
   MOUSE  (no prefix needed)

@@ -105,10 +105,10 @@ See [CHEATSHEET.md](CHEATSHEET.md) for the full reference.
 
 Config lives at `~/.config/tmux/tmux.conf` (XDG-compliant); `~/.tmux.conf` is symlinked to it.
 
-**Change prefix to Ctrl-a:**
-Uncomment the three lines near the top of `~/.config/tmux/tmux.conf`:
+**Change prefix (default is Ctrl-q):**
+Edit the three lines near the top of `~/.config/tmux/tmux.conf`:
 ```tmux
-unbind C-b
+unbind C-q
 set -g prefix C-a
 bind C-a send-prefix
 ```
