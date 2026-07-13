@@ -191,6 +191,13 @@ if $OPT_UNINSTALL; then
   _strip_sentinel_block "$HOME/.bashrc"
   _strip_sentinel_block "$HOME/.zshrc"
 
+  # Agent-CLI PATH hygiene snippet (the rc source-line is removed above with the
+  # sentinel block; here we drop the standalone snippet file it pointed at).
+  if [ -f "$HOME/.config/fleetmux/agent-path.sh" ]; then
+    rm -f "$HOME/.config/fleetmux/agent-path.sh"
+    ok "Removed: $HOME/.config/fleetmux/agent-path.sh"
+  fi
+
   # Ghostty config: only the fleetmux-managed file; app/binary is left alone.
   GHOSTTY_CONF="$HOME/.config/ghostty/config"
   if [ -f "$GHOSTTY_CONF" ] && grep -qF "$FLEETMUX_SENTINEL" "$GHOSTTY_CONF" 2>/dev/null; then
@@ -624,6 +631,53 @@ TOML
     *)    info "Add starship init for your shell: https://starship.rs/guide/#step-2" ;;
   esac
 fi # end: ! $OPT_NO_STARSHIP
+
+# ── step 7b: Agent-CLI PATH hygiene ───────────────────────────────────────────
+# fleetmux is the agent-native tmux distro, so the CLIs it exists to run
+# (claude, codex, cursor-agent, gemini) must be resolvable in the shells tmux
+# panes spawn. Node CLIs installed via nvm/volta/bun often are NOT exported to a
+# plain login shell, so a pane whose shell has a bare PATH dies on
+# `command not found: claude`. We write a standalone snippet and source it from
+# the rc via a single sentinel line (so uninstall's existing strip removes it).
+step "Step 7b — Agent-CLI PATH hygiene"
+FLEETMUX_CONF_DIR="$HOME/.config/fleetmux"
+AGENT_PATH_SNIPPET="$FLEETMUX_CONF_DIR/agent-path.sh"
+mkdir -p "$FLEETMUX_CONF_DIR"
+cat > "$AGENT_PATH_SNIPPET" <<'FLEETMUX_AGENT_PATH_SH'
+# fleetmux-managed — agent-CLI PATH hygiene (sourced from your shell rc).
+# Makes node + node-installed agent CLIs (claude, codex, cursor-agent, gemini)
+# resolvable in this shell, so a tmux pane that spawns it can launch them even
+# when node was installed via nvm/volta/bun. Idempotent; only-if-exists.
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" >/dev/null 2>&1
+for _fm_d in "$HOME/.local/bin" "$HOME/.bun/bin" "$HOME/.volta/bin" \
+             "$HOME/Library/Application Support/Claude/claude-code/"*/claude.app/Contents/MacOS; do
+  [ -d "$_fm_d" ] && case ":$PATH:" in *":$_fm_d:"*) ;; *) PATH="$_fm_d:$PATH" ;; esac
+done
+export PATH
+unset _fm_d
+FLEETMUX_AGENT_PATH_SH
+ok "Wrote agent-CLI PATH snippet: $AGENT_PATH_SNIPPET"
+
+# Source the snippet from the current shell's rc (non-destructive: only if the
+# rc exists and the line is absent). One sentinel line → uninstall-strip-safe.
+_source_agent_path() {
+  local rc_file="$1"
+  [ -f "$rc_file" ] || return 0
+  if grep -qF 'fleetmux/agent-path.sh' "$rc_file" 2>/dev/null; then
+    ok "Agent-CLI PATH already sourced in $rc_file"
+  else
+    printf '\n%s\n%s\n' "$FLEETMUX_SENTINEL" \
+      '[ -f "$HOME/.config/fleetmux/agent-path.sh" ] && . "$HOME/.config/fleetmux/agent-path.sh"' >> "$rc_file"
+    ok "Sourced agent-CLI PATH from $rc_file"
+  fi
+}
+case "$(basename "${SHELL:-bash}")" in
+  bash) _source_agent_path "$HOME/.bashrc" ;;
+  zsh)  _source_agent_path "$HOME/.zshrc"  ;;
+  fish) info "Fish: fleetmux does not manage fish PATH — ensure node/agent CLIs are on PATH (source nvm, or fish_add_path the dir)." ;;
+  *)    info "Ensure your agent CLIs (claude, codex, …) are on PATH for your shell." ;;
+esac
 
 # ── step 8: Nerd Font ─────────────────────────────────────────────────────────
 step "Step 8 — Nerd Font (JetBrains Mono Nerd)"
