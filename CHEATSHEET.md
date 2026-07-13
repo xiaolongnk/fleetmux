@@ -49,9 +49,9 @@
 
 ## Copy mode
 
-Enter copy mode deliberately with `prefix + [` — a stray mouse-wheel scroll
-does NOT auto-enter it. The status bar shows a `📜 COPY MODE` banner while
-it's active.
+`mouse on` means a wheel-scroll ALSO enters copy mode automatically (not just
+`prefix + [`) — the status bar shows a `📜 COPY MODE` banner while it's
+active, so a scroll that "froze" your terminal is just this, not a hang.
 
 | Key | Action |
 |-----|--------|
