@@ -50,8 +50,7 @@
 ## Copy mode
 
 `mouse on` means a wheel-scroll ALSO enters copy mode automatically (not just
-`prefix + [`) — the status bar shows a `📜 COPY MODE` banner while it's
-active, so a scroll that "froze" your terminal is just this, not a hang.
+`prefix + [`), so a scroll that "froze" your terminal is just this, not a hang.
 
 | Key | Action |
 |-----|--------|

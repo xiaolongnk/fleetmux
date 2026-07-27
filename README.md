@@ -150,8 +150,8 @@ place; the command prints how many it found.
 
 **My terminal looks frozen after scrolling with the mouse.** This is tmux's
 own scrollback view ("copy mode") — expected behavior when `mouse on` is set,
-not a hang. The status bar shows a `📜 COPY MODE` banner while it's active.
-Press `q`, `Esc`, or `Ctrl-c` to get back to your shell; nothing is lost.
+not a hang. Press `q`, `Esc`, or `Ctrl-c` to get back to your shell; nothing
+is lost.
 
 ---
 
