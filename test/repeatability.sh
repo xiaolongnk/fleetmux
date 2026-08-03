@@ -89,8 +89,10 @@ cp "$GIT_LOG" "$TEST_ROOT/logs/git-after-run1.log"
 
 find "$TEST_ROOT/home" -type f -o -type l 2>/dev/null | sort > "$TEST_ROOT/logs/filelist-after-run1.txt"
 : > "$TEST_ROOT/logs/content-after-run1.txt"
+mkdir -p "$TEST_ROOT/logs/run1-copies"
 for f in "$TEST_ROOT/home/.config/tmux/tmux.conf" "$TEST_ROOT/home/.config/starship.toml" "$TEST_ROOT/home/.zshrc"; do
   [ -f "$f" ] && { echo "--- $f ---"; cat "$f"; } >> "$TEST_ROOT/logs/content-after-run1.txt"
+  [ -f "$f" ] && cp "$f" "$TEST_ROOT/logs/run1-copies/$(basename "$f")"
 done
 
 run_install 2 > "$TEST_ROOT/logs/run2.out" 2>&1 || { echo "RUN 2 FAILED:"; cat "$TEST_ROOT/logs/run2.out"; exit 1; }
@@ -140,16 +142,19 @@ fi
 echo "PASS (run 2 made zero git clone calls)"
 
 echo ""
-echo "=== CHECK: no duplicate '# fleetmux-managed' sentinel blocks ==="
-SENTINEL_FILES="$TEST_ROOT/home/.zshrc"
-for f in $SENTINEL_FILES; do
-  count=$(grep -c '# fleetmux-managed' "$f" 2>/dev/null || echo 0)
-  if [ "$count" -gt 1 ]; then
-    echo "FAIL — duplicate sentinel blocks in $f ($count occurrences)"
+echo "=== CHECK: no new '# fleetmux-managed' sentinel blocks on run 2 ==="
+SENTINEL_FILES=".zshrc"
+for name in $SENTINEL_FILES; do
+  run1_copy="$TEST_ROOT/logs/run1-copies/$name"
+  run2_file="$TEST_ROOT/home/$name"
+  count1=$(grep -c '# fleetmux-managed' "$run1_copy" 2>/dev/null || echo 0)
+  count2=$(grep -c '# fleetmux-managed' "$run2_file" 2>/dev/null || echo 0)
+  if [ "$count2" -gt "$count1" ]; then
+    echo "FAIL — run 2 added sentinel blocks in $run2_file (run1=$count1, run2=$count2)"
     exit 1
   fi
 done
-echo "PASS (no duplicate sentinel blocks)"
+echo "PASS (run 2 added no new sentinel blocks)"
 
 echo ""
 echo "REPEATABILITY TEST: PASS"

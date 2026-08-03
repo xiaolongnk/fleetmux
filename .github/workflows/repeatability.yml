@@ -19,10 +19,13 @@ jobs:
       - name: Shellcheck
         run: |
           brew list shellcheck >/dev/null 2>&1 || brew install shellcheck
-          shellcheck -S warning bin/install.sh test/repeatability.sh
+          shellcheck -S warning bin/install.sh test/repeatability.sh test/fish-wiring.sh test/fresh-machine-diagnose.sh
 
       - name: Bash syntax check
         run: bash -n bin/install.sh
 
       - name: Repeatability test (run install.sh twice, diff state)
         run: bash test/repeatability.sh
+
+      - name: Fish wiring test (--full install configures fish + tmux default-shell)
+        run: bash test/fish-wiring.sh
