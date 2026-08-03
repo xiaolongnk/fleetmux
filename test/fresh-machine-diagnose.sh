@@ -88,15 +88,17 @@ mkdir -p "$TEST_ROOT/home/Library/Fonts"
 # Simulate a fresh account: no shell RC files, no fish config.
 # (We do not create .zshrc / .bashrc / .config/fish.)
 
+export TEST_ROOT
+
 # Run the installer exactly as the README shows, but with --full --yes.
-HOME="$TEST_ROOT/home" \
-SHELL="/bin/zsh" \
-PATH="$TEST_ROOT/fakebin:/usr/bin:/bin:/usr/sbin:/sbin" \
-FAKEBIN="$TEST_ROOT/fakebin" \
-BREW_LOG="$BREW_LOG" \
-GIT_LOG="$GIT_LOG" \
-FLEETMUX_REPO_URL="file://$FLEETMUX_REPO" \
-TEST_ROOT="$TEST_ROOT" \
+env \
+  HOME="$TEST_ROOT/home" \
+  SHELL="/bin/zsh" \
+  PATH="$TEST_ROOT/fakebin:/usr/bin:/bin:/usr/sbin:/sbin" \
+  FAKEBIN="$TEST_ROOT/fakebin" \
+  BREW_LOG="$BREW_LOG" \
+  GIT_LOG="$GIT_LOG" \
+  FLEETMUX_REPO_URL="file://$FLEETMUX_REPO" \
   bash "$FLEETMUX_REPO/bin/install.sh" --full --yes \
   > "$TEST_ROOT/logs/install.out" 2>&1 || {
     echo "INSTALLER EXITED NON-ZERO:"
