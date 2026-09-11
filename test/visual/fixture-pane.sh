@@ -21,6 +21,35 @@ case "${1:-}" in
     printf '\033[48;5;236m\033[38;5;255m %-12s\033[1m%-28s\033[0m\033[48;5;236m\033[38;5;250m%-56s\033[0m\n' \
       'fleetmux' 'workspace' 'agents  ⬡ Claude  12:34  demo-host'
     ;;
+  prompt)
+    [ -n "${STARSHIP_CONFIG:-}" ] || { printf 'fixture-pane: STARSHIP_CONFIG is required\n' >&2; exit 64; }
+    command -v starship >/dev/null 2>&1 || { printf 'fixture-pane: starship is required\n' >&2; exit 69; }
+    command -v fish >/dev/null 2>&1 || { printf 'fixture-pane: fish is required\n' >&2; exit 69; }
+    width="${3:-100}"
+    repo="${4:-}"
+    [ -n "$repo" ] || { printf 'fixture-pane: prompt fixture requires a repo path\n' >&2; exit 64; }
+    mkdir -p "$repo"
+    git -C "$repo" init -q -b main
+    git -C "$repo" config user.name 'Fleetmux Fixture'
+    git -C "$repo" config user.email 'fixture@example.invalid'
+    printf 'fleetmux\n' > "$repo/README.md"
+    git -C "$repo" add README.md
+    git -C "$repo" commit -qm 'fixture'
+    printf 'prompt\n' >> "$repo/README.md"
+    printf 'untracked\n' > "$repo/notes.txt"
+
+    printf '\033[2J\033[H'
+    printf '\033[1;37m%s\033[0m\n\n' "$2"
+    printf '\033[1;35mAgent output streams above the prompt.\033[0m\n'
+    printf 'Fixed repo: ~/work/fleetmux-demo\n\n'
+    fish -c 'starship prompt $argv' -- --terminal-width="$width" --path="$repo" \
+      --logical-path='~/work/fleetmux-demo' --status=0 --cmd-duration=2345
+    printf 'git status --short\n'
+    printf ' M README.md\n?? notes.txt\n\n'
+    fish -c 'starship prompt $argv' -- --terminal-width="$width" --path="$repo" \
+      --logical-path='~/work/fleetmux-demo' --status=17 --cmd-duration=213
+    printf 'retry-agent --resume\n'
+    ;;
   main)
     printf '\033[2J\033[H'
     printf '\033[1;36mfleetmux visual baseline\033[0m\n\n'
@@ -39,7 +68,7 @@ case "${1:-}" in
     printf '1  Shell\n'
     ;;
   *)
-    printf 'fixture-pane: expected frame, main, or side\n' >&2
+    printf 'fixture-pane: expected frame, prompt, main, or side\n' >&2
     exit 64
     ;;
 esac

@@ -3,7 +3,12 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: test/visual/render-ghostty.sh --config-file <path> --output <png>
+Usage: test/visual/render-ghostty.sh --config-file <path> --output <png> [options]
+
+Options:
+  --fixture frame|prompt   Fixture to render (default: frame)
+  --starship-config PATH  Required for the prompt fixture
+  --terminal-width COLS   Fixed prompt/window width (default: 100)
 
 Renders a deterministic fleetmux tmux fixture in a new Ghostty instance,
 captures that exact window by CoreGraphics window id, removes the title bar,
@@ -13,10 +18,16 @@ EOF
 
 CONFIG_FILE=""
 OUTPUT=""
+FIXTURE="frame"
+STARSHIP_CONFIG=""
+TERMINAL_WIDTH=100
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --config-file) CONFIG_FILE="${2:-}"; shift 2 ;;
     --output) OUTPUT="${2:-}"; shift 2 ;;
+    --fixture) FIXTURE="${2:-}"; shift 2 ;;
+    --starship-config) STARSHIP_CONFIG="${2:-}"; shift 2 ;;
+    --terminal-width) TERMINAL_WIDTH="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) printf 'render-ghostty: unknown argument: %s\n' "$1" >&2; usage >&2; exit 64 ;;
   esac
@@ -25,6 +36,13 @@ done
 [ -n "$CONFIG_FILE" ] || { printf 'render-ghostty: --config-file is required\n' >&2; exit 64; }
 [ -n "$OUTPUT" ] || { printf 'render-ghostty: --output is required\n' >&2; exit 64; }
 [ -f "$CONFIG_FILE" ] || { printf 'render-ghostty: config not found: %s\n' "$CONFIG_FILE" >&2; exit 66; }
+[ "$FIXTURE" = frame ] || [ "$FIXTURE" = prompt ] || { printf 'render-ghostty: invalid fixture: %s\n' "$FIXTURE" >&2; exit 64; }
+case "$TERMINAL_WIDTH" in *[!0-9]*|'') printf 'render-ghostty: terminal width must be numeric\n' >&2; exit 64 ;; esac
+if [ "$FIXTURE" = prompt ]; then
+  [ -f "$STARSHIP_CONFIG" ] || { printf 'render-ghostty: prompt fixture requires --starship-config\n' >&2; exit 66; }
+  command -v starship >/dev/null 2>&1 || { printf 'render-ghostty: starship is required for prompt fixture\n' >&2; exit 69; }
+  command -v fish >/dev/null 2>&1 || { printf 'render-ghostty: fish is required for prompt fixture\n' >&2; exit 69; }
+fi
 [ "$(uname -s)" = Darwin ] || { printf 'render-ghostty: macOS is required (targeted Ghostty capture uses CoreGraphics)\n' >&2; exit 69; }
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -39,6 +57,9 @@ done
 mkdir -p "$(dirname "$OUTPUT")"
 OUTPUT="$(cd "$(dirname "$OUTPUT")" && pwd)/$(basename "$OUTPUT")"
 CONFIG_FILE="$(cd "$(dirname "$CONFIG_FILE")" && pwd)/$(basename "$CONFIG_FILE")"
+if [ -n "$STARSHIP_CONFIG" ]; then
+  STARSHIP_CONFIG="$(cd "$(dirname "$STARSHIP_CONFIG")" && pwd)/$(basename "$STARSHIP_CONFIG")"
+fi
 
 "$GHOSTTY_BIN" +validate-config --config-file="$CONFIG_FILE" >/dev/null
 swift "$ROOT_DIR/test/visual/display-state.swift" >/dev/null
@@ -61,7 +82,7 @@ trap cleanup EXIT INT TERM
 cp "$CONFIG_FILE" "$EFFECTIVE_CONFIG"
 cat >>"$EFFECTIVE_CONFIG" <<EOF
 title = $TOKEN
-window-width = 100
+window-width = $TERMINAL_WIDTH
 window-height = 30
 window-save-state = never
 confirm-close-surface = false
@@ -80,8 +101,9 @@ codesign --force --deep --sign - "$ISOLATED_APP" >/dev/null 2>&1
 
 AFTER_WINDOWS="$SCRATCH/windows-after.txt"
 open -n --env "HOME=$SCRATCH/home" --env "XDG_CONFIG_HOME=$SCRATCH/xdg-config" \
+  --env "STARSHIP_CONFIG=$STARSHIP_CONFIG" --env "STARSHIP_SHELL=fish" \
   "$ISOLATED_APP" --args --config-default-files=false --config-file="$EFFECTIVE_CONFIG" \
-  -e /bin/bash "$ROOT_DIR/test/visual/fixture-pane.sh" frame "$SENTINEL"
+  -e /bin/bash "$ROOT_DIR/test/visual/fixture-pane.sh" "$FIXTURE" "$SENTINEL" "$TERMINAL_WIDTH" "$SCRATCH/repo"
 
 ISOLATED_BIN="$(realpath "$ISOLATED_APP/Contents/MacOS/ghostty")"
 for _ in $(seq 1 40); do
@@ -95,13 +117,21 @@ done
 
 WINDOW_ROW=""
 WINDOW_ERROR="$SCRATCH/window-error.txt"
+EXPECTED_BOUNDS_WIDTH=$((TERMINAL_WIDTH * 8 + 8))
+EXPECTED_BOUNDS_HEIGHT=$((30 * 18 + 10))
+BOUNDS_TOLERANCE=24
 for _ in $(seq 1 40); do
   swift "$ROOT_DIR/test/visual/window-id.swift" --list >"$AFTER_WINDOWS"
-  MATCHING_IDS="$(awk -F '\t' -v pid="$GHOSTTY_PID" \
-    '$2 == pid && $3 >= 500 && $4 >= 300 { print $1 }' "$AFTER_WINDOWS")"
+  MATCHING_IDS="$(awk -F '\t' -v pid="$GHOSTTY_PID" -v expected_width="$EXPECTED_BOUNDS_WIDTH" \
+    -v expected_height="$EXPECTED_BOUNDS_HEIGHT" -v tolerance="$BOUNDS_TOLERANCE" '
+    function abs(value) { return value < 0 ? -value : value }
+    $2 == pid && abs($3 - expected_width) <= tolerance && abs($4 - expected_height) <= tolerance { print $1 }
+  ' "$AFTER_WINDOWS")"
   if [ "$(printf '%s\n' "$MATCHING_IDS" | sed '/^$/d' | wc -l | tr -d ' ')" = 1 ]; then
     WINDOW_ID="$MATCHING_IDS"
-    if WINDOW_ROW="$(swift "$ROOT_DIR/test/visual/window-id.swift" --id "$WINDOW_ID" 2>"$WINDOW_ERROR")"; then
+    if WINDOW_ROW="$(swift "$ROOT_DIR/test/visual/window-id.swift" --id "$WINDOW_ID" \
+      --expected-width "$EXPECTED_BOUNDS_WIDTH" --expected-height "$EXPECTED_BOUNDS_HEIGHT" \
+      --tolerance "$BOUNDS_TOLERANCE" 2>"$WINDOW_ERROR")"; then
       break
     fi
   fi
@@ -128,6 +158,10 @@ fi
 [ -s "$RAW_CAPTURE" ] || { printf 'render-ghostty: capture FAILED: ScreenCaptureKit emitted an empty file\n' >&2; exit 1; }
 
 swift "$ROOT_DIR/test/visual/assert-fixture.swift" "$RAW_CAPTURE" "$SENTINEL" >/dev/null || {
+  if [ "${FLEETMUX_KEEP_REJECTED_CAPTURE:-0}" = 1 ]; then
+    cp "$RAW_CAPTURE" "${OUTPUT%.png}-rejected.png"
+    printf 'render-ghostty: kept rejected capture at %s\n' "${OUTPUT%.png}-rejected.png" >&2
+  fi
   printf 'render-ghostty: capture FAILED: selected Ghostty window is not the fixture terminal\n' >&2
   exit 1
 }
