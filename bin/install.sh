@@ -179,10 +179,11 @@ if $OPT_UNINSTALL; then
     if grep -qF "$FLEETMUX_SENTINEL" "$rc_file" 2>/dev/null; then
       local tmp
       tmp="$(mktemp)"
-      awk -v sentinel="$FLEETMUX_SENTINEL" '
-        $0 == sentinel { skip = 2; next }
-        skip > 0 { skip--; next }
-        { print }
+      awk -v sentinel="$FLEETMUX_SENTINEL" -v agent='[ -f "$HOME/.config/fleetmux/agent-path.sh" ] && . "$HOME/.config/fleetmux/agent-path.sh"' '
+        $0 == sentinel { managed = 1; next }
+        managed && ($0 == agent || $0 ~ /^eval "\$\(starship init (bash|zsh)\)"$/ || $0 ~ /^command -v starship .*starship init (bash|zsh)/) { next }
+        { managed = 0; lines[++count] = $0 }
+        END { while (count > 0 && lines[count] == "") count--; for (i = 1; i <= count; i++) print lines[i] }
       ' "$rc_file" > "$tmp"
       mv "$tmp" "$rc_file"
       ok "Removed fleetmux init lines from $rc_file"
@@ -609,7 +610,8 @@ TOML
     ok "Starship config created: $STARSHIP_CONF"
   fi
 
-  # Add starship init line to shell RC (non-destructive: only if absent)
+  # The shell block is installed with agent PATH setup below so both lines share
+  # one sentinel and one uninstallable ownership boundary.
   _add_starship_init() {
     local rc_file="$1" init_line="$2"
     if [ -f "$rc_file" ]; then
@@ -624,12 +626,6 @@ TOML
 
   CURRENT_SHELL="$(basename "${SHELL:-bash}")"
   # shellcheck disable=SC2016
-  case "$CURRENT_SHELL" in
-    bash) _add_starship_init "$HOME/.bashrc" 'eval "$(starship init bash)"' ;;
-    zsh)  _add_starship_init "$HOME/.zshrc"  'eval "$(starship init zsh)"' ;;
-    fish) info "Fish shell: add 'starship init fish | source' to ~/.config/fish/config.fish" ;;
-    *)    info "Add starship init for your shell: https://starship.rs/guide/#step-2" ;;
-  esac
 fi # end: ! $OPT_NO_STARSHIP
 
 # ── step 7b: Agent-CLI PATH hygiene ───────────────────────────────────────────
@@ -662,19 +658,24 @@ ok "Wrote agent-CLI PATH snippet: $AGENT_PATH_SNIPPET"
 # Source the snippet from the current shell's rc (non-destructive: only if the
 # rc exists and the line is absent). One sentinel line → uninstall-strip-safe.
 _source_agent_path() {
-  local rc_file="$1"
+  local rc_file="$1" starship_line="$2"
   [ -f "$rc_file" ] || return 0
-  if grep -qF 'fleetmux/agent-path.sh' "$rc_file" 2>/dev/null; then
-    ok "Agent-CLI PATH already sourced in $rc_file"
-  else
-    printf '\n%s\n%s\n' "$FLEETMUX_SENTINEL" \
-      '[ -f "$HOME/.config/fleetmux/agent-path.sh" ] && . "$HOME/.config/fleetmux/agent-path.sh"' >> "$rc_file"
-    ok "Sourced agent-CLI PATH from $rc_file"
-  fi
+  local tmp
+  tmp="$(mktemp)"
+  awk -v sentinel="$FLEETMUX_SENTINEL" -v agent='[ -f "$HOME/.config/fleetmux/agent-path.sh" ] && . "$HOME/.config/fleetmux/agent-path.sh"' '
+    $0 == sentinel { managed = 1; next }
+    managed && ($0 == agent || $0 ~ /^eval "\$\(starship init (bash|zsh)\)"$/ || $0 ~ /^command -v starship .*starship init (bash|zsh)/) { next }
+    { managed = 0; lines[++count] = $0 }
+    END { while (count > 0 && lines[count] == "") count--; for (i = 1; i <= count; i++) print lines[i] }
+  ' "$rc_file" > "$tmp"
+  mv "$tmp" "$rc_file"
+  printf '\n%s\n%s\n%s\n' "$FLEETMUX_SENTINEL" "$starship_line" \
+    '[ -f "$HOME/.config/fleetmux/agent-path.sh" ] && . "$HOME/.config/fleetmux/agent-path.sh"' >> "$rc_file"
+  ok "Installed fleetmux shell block in $rc_file"
 }
 case "$(basename "${SHELL:-bash}")" in
-  bash) _source_agent_path "$HOME/.bashrc" ;;
-  zsh)  _source_agent_path "$HOME/.zshrc"  ;;
+  bash) _source_agent_path "$HOME/.bashrc" 'command -v starship >/dev/null 2>&1 && eval "$(starship init bash)"' ;;
+  zsh)  _source_agent_path "$HOME/.zshrc"  'command -v starship >/dev/null 2>&1 && eval "$(starship init zsh)"' ;;
   fish) info "Fish: fleetmux does not manage fish PATH — ensure node/agent CLIs are on PATH (source nvm, or fish_add_path the dir)." ;;
   *)    info "Ensure your agent CLIs (claude, codex, …) are on PATH for your shell." ;;
 esac

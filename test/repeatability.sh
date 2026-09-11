@@ -68,7 +68,17 @@ chmod +x "$TEST_ROOT/fakebin/brew" "$TEST_ROOT/fakebin/git"
 # install path (real or fake) entirely — this test isn't about fonts.
 mkdir -p "$TEST_ROOT/home/Library/Fonts"
 : > "$TEST_ROOT/home/Library/Fonts/FooNerdFontMono.ttf"
-: > "$TEST_ROOT/home/.zshrc"
+cat > "$TEST_ROOT/home/.zshrc" <<'ZSHRC'
+export MY_IMPORTANT_VAR=1
+
+# fleetmux-managed
+eval "$(starship init zsh)"
+
+# fleetmux-managed
+[ -f "$HOME/.config/fleetmux/agent-path.sh" ] && . "$HOME/.config/fleetmux/agent-path.sh"
+alias USER_ALIAS_MUST_SURVIVE='echo hi'
+export ANOTHER_USER_LINE=2
+ZSHRC
 
 run_install() {
   local n="$1"
@@ -86,6 +96,14 @@ run_install() {
 run_install 1 > "$TEST_ROOT/logs/run1.out" 2>&1 || { echo "RUN 1 FAILED:"; cat "$TEST_ROOT/logs/run1.out"; exit 1; }
 cp "$BREW_LOG" "$TEST_ROOT/logs/brew-after-run1.log"
 cp "$GIT_LOG" "$TEST_ROOT/logs/git-after-run1.log"
+
+echo ""
+echo "=== CHECK: legacy duplicate healing preserves adjacent user content ==="
+for user_line in 'export MY_IMPORTANT_VAR=1' "alias USER_ALIAS_MUST_SURVIVE='echo hi'" 'export ANOTHER_USER_LINE=2'; do
+  grep -qF "$user_line" "$TEST_ROOT/home/.zshrc" || { echo "FAIL — missing user line: $user_line"; exit 1; }
+done
+[ "$(grep -c '^# fleetmux-managed$' "$TEST_ROOT/home/.zshrc")" -eq 1 ] || { echo "FAIL — legacy duplicate was not healed"; exit 1; }
+echo "PASS (legacy duplicate healed; user lines preserved)"
 
 find "$TEST_ROOT/home" -type f -o -type l 2>/dev/null | sort > "$TEST_ROOT/logs/filelist-after-run1.txt"
 : > "$TEST_ROOT/logs/content-after-run1.txt"
