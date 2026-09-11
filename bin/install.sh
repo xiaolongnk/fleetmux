@@ -179,10 +179,11 @@ if $OPT_UNINSTALL; then
     if grep -qF "$FLEETMUX_SENTINEL" "$rc_file" 2>/dev/null; then
       local tmp
       tmp="$(mktemp)"
-      awk -v sentinel="$FLEETMUX_SENTINEL" '
-        $0 == sentinel { skip = 2; next }
-        skip > 0 { skip--; next }
-        { print }
+      awk -v sentinel="$FLEETMUX_SENTINEL" -v agent='[ -f "$HOME/.config/fleetmux/agent-path.sh" ] && . "$HOME/.config/fleetmux/agent-path.sh"' '
+        $0 == sentinel { managed = 1; next }
+        managed && ($0 == agent || $0 ~ /^eval "\$\(starship init (bash|zsh)\)"$/ || $0 ~ /^command -v starship .*starship init (bash|zsh)/) { next }
+        { managed = 0; lines[++count] = $0 }
+        END { while (count > 0 && lines[count] == "") count--; for (i = 1; i <= count; i++) print lines[i] }
       ' "$rc_file" > "$tmp"
       mv "$tmp" "$rc_file"
       ok "Removed fleetmux init lines from $rc_file"
@@ -661,10 +662,10 @@ _source_agent_path() {
   [ -f "$rc_file" ] || return 0
   local tmp
   tmp="$(mktemp)"
-  awk -v sentinel="$FLEETMUX_SENTINEL" '
-    $0 == sentinel { skip = 2; next }
-    skip > 0 { skip--; next }
-    { lines[++count] = $0 }
+  awk -v sentinel="$FLEETMUX_SENTINEL" -v agent='[ -f "$HOME/.config/fleetmux/agent-path.sh" ] && . "$HOME/.config/fleetmux/agent-path.sh"' '
+    $0 == sentinel { managed = 1; next }
+    managed && ($0 == agent || $0 ~ /^eval "\$\(starship init (bash|zsh)\)"$/ || $0 ~ /^command -v starship .*starship init (bash|zsh)/) { next }
+    { managed = 0; lines[++count] = $0 }
     END { while (count > 0 && lines[count] == "") count--; for (i = 1; i <= count; i++) print lines[i] }
   ' "$rc_file" > "$tmp"
   mv "$tmp" "$rc_file"
