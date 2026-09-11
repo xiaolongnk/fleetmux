@@ -79,7 +79,7 @@ log) on every push.
 
 | Key | Action |
 |-----|--------|
-| `prefix + \|` | Split pane vertically |
+| `prefix + \\` | Split pane vertically |
 | `prefix + -` | Split pane horizontally |
 | `prefix + h/j/k/l` | Navigate panes |
 | `prefix + a` | Jump to Claude Code pane |

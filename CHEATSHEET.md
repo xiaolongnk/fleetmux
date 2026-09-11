@@ -30,7 +30,7 @@
 
 | Key | Action |
 |-----|--------|
-| `prefix + \|` | Split vertically (side by side) |
+| `prefix + \\` | Split vertically (side by side) |
 | `prefix + -` | Split horizontally (top/bottom) |
 | `prefix + h/j/k/l` | Navigate panes (vim-style: left/down/up/right) |
 | `prefix + z` | Zoom / un-zoom current pane |

@@ -17,7 +17,7 @@ cat << 'EOF'
   ─────────────────────────────────────────────────────────────
   TOP SHORTCUTS
 
-    prefix + |                Split pane left / right
+    prefix + \                Split pane left / right
     prefix + -                Split pane top / bottom
     prefix + z                Zoom / un-zoom current pane
     prefix + c                New window (tab)
