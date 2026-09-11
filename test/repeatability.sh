@@ -42,6 +42,7 @@ if [ "$1" = "install" ]; then
       tmux)     printf '#!/bin/bash\necho "tmux 3.6a"\n' > "$FAKEBIN/tmux"; chmod +x "$FAKEBIN/tmux" ;;
       starship) printf '#!/bin/bash\necho "starship 1.20.0"\n' > "$FAKEBIN/starship"; chmod +x "$FAKEBIN/starship" ;;
       fish)     printf '#!/bin/bash\necho "fish, version 3.7.0"\n' > "$FAKEBIN/fish"; chmod +x "$FAKEBIN/fish" ;;
+      zoxide)   printf '#!/bin/bash\necho "zoxide 0.9.8"\n' > "$FAKEBIN/zoxide"; chmod +x "$FAKEBIN/zoxide" ;;
       node|font-jetbrains-mono-nerd-font|ghostty) : ;;
     esac
   done
@@ -89,7 +90,7 @@ cp "$GIT_LOG" "$TEST_ROOT/logs/git-after-run1.log"
 
 find "$TEST_ROOT/home" -type f -o -type l 2>/dev/null | sort > "$TEST_ROOT/logs/filelist-after-run1.txt"
 : > "$TEST_ROOT/logs/content-after-run1.txt"
-for f in "$TEST_ROOT/home/.config/tmux/tmux.conf" "$TEST_ROOT/home/.config/starship.toml" "$TEST_ROOT/home/.zshrc"; do
+for f in "$TEST_ROOT/home/.config/tmux/tmux.conf" "$TEST_ROOT/home/.config/starship.toml" "$TEST_ROOT/home/.zshrc" "$TEST_ROOT/home/.config/fleetmux/shell/zsh.sh"; do
   [ -f "$f" ] && { echo "--- $f ---"; cat "$f"; } >> "$TEST_ROOT/logs/content-after-run1.txt"
 done
 
@@ -97,7 +98,7 @@ run_install 2 > "$TEST_ROOT/logs/run2.out" 2>&1 || { echo "RUN 2 FAILED:"; cat "
 
 find "$TEST_ROOT/home" -type f -o -type l 2>/dev/null | sort > "$TEST_ROOT/logs/filelist-after-run2.txt"
 : > "$TEST_ROOT/logs/content-after-run2.txt"
-for f in "$TEST_ROOT/home/.config/tmux/tmux.conf" "$TEST_ROOT/home/.config/starship.toml" "$TEST_ROOT/home/.zshrc"; do
+for f in "$TEST_ROOT/home/.config/tmux/tmux.conf" "$TEST_ROOT/home/.config/starship.toml" "$TEST_ROOT/home/.zshrc" "$TEST_ROOT/home/.config/fleetmux/shell/zsh.sh"; do
   [ -f "$f" ] && { echo "--- $f ---"; cat "$f"; } >> "$TEST_ROOT/logs/content-after-run2.txt"
 done
 
@@ -150,6 +151,14 @@ for f in $SENTINEL_FILES; do
   fi
 done
 echo "PASS (no duplicate sentinel blocks)"
+
+echo ""
+echo "=== CHECK: default install remains Ghostty opt-in ==="
+if [ -e "$TEST_ROOT/home/.config/ghostty/config" ]; then
+  echo "FAIL — default install unexpectedly wrote Ghostty config"
+  exit 1
+fi
+echo "PASS (default install wrote no Ghostty config)"
 
 echo ""
 echo "REPEATABILITY TEST: PASS"

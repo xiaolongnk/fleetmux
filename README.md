@@ -60,6 +60,7 @@ log) on every push.
 | `tmux/tmux.conf` | Full config: TPM, 4 plugins, agent-aware status bar, keybindings |
 | `tmux/scripts/agent-status.sh` | Probes pane titles for Claude/Cursor/Gemini; drives the status bar |
 | `bin/install.sh` | Idempotent installer: backs up config, installs TPM, Starship, Nerd Font, links config |
+| `assets/ghostty/` | Two original low-contrast wallpapers: Aurora (default) and Dusk (alternative) |
 | `bin/start` | Launches a named session with Claude + Shell windows — installed as `fleetmux-start` |
 | `CHEATSHEET.md` | Full key-binding reference (also accessible via `prefix + ?`) |
 | `AGENTS.md` | How pane-title detection works and how to customize it |
@@ -113,6 +114,27 @@ set -g prefix C-a
 bind C-a send-prefix
 ```
 Then reload: `prefix + r`.
+
+### Shell quality and directory jumping
+
+fleetmux adds one removable sentinel block to the active shell RC and keeps the
+actual Bash, Zsh, and Fish setup in `~/.config/fleetmux/shell/`. Zsh receives
+persistent deduplicated history, completion, Emacs-style editing with prefix
+history search, and `ll`/`la`/`l` aliases.
+
+[zoxide](https://github.com/ajeetdsouza/zoxide) supplies learned directory
+jumping (`z project`, or `zi` for interactive selection). It is used instead
+of autojump because it is actively maintained, directly supports Bash/Zsh/Fish,
+and keeps the familiar jump-by-frecency workflow. Pass `--no-zoxide` to opt out.
+
+### Ghostty visual preset (opt-in)
+
+Ghostty remains deliberately opt-in: use `--with-ghostty` or `--full`. The
+plain installer does not write terminal config. The preset uses Catppuccin
+Mocha, conservative 96% opacity, modest blur, comfortable padding, a blinking
+block cursor, and the subdued Aurora wallpaper. To switch to Dusk, comment the
+Aurora `background-image` line in `~/.config/ghostty/config` and uncomment the
+adjacent Dusk alternative.
 
 **Add a custom agent indicator:**
 Edit `~/.config/tmux/scripts/agent-status.sh` — see [AGENTS.md](AGENTS.md).

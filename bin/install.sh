@@ -17,6 +17,7 @@
 #   --minimal         tmux + TPM only (skip Starship, Nerd Font)
 #   --no-starship     Skip Starship prompt
 #   --no-font         Skip Nerd Font
+#   --no-zoxide       Skip zoxide directory jumping
 #   --yes, -y         Auto-confirm all prompts (CI / headless)
 #
 # Flags (v2 — opt-in, high-invasiveness components):
@@ -92,6 +93,7 @@ _install_font_direct() {
 OPT_MINIMAL=false
 OPT_NO_STARSHIP=false
 OPT_NO_FONT=false
+OPT_NO_ZOXIDE=false
 OPT_YES=false
 OPT_WITH_FISH=false
 OPT_WITH_GHOSTTY=false
@@ -103,6 +105,7 @@ for arg in "$@"; do
     --minimal)      OPT_MINIMAL=true ;;
     --no-starship)  OPT_NO_STARSHIP=true ;;
     --no-font)      OPT_NO_FONT=true ;;
+    --no-zoxide)    OPT_NO_ZOXIDE=true ;;
     --yes|-y)       OPT_YES=true ;;
     --with-fish)    OPT_WITH_FISH=true ;;
     --with-ghostty) OPT_WITH_GHOSTTY=true ;;
@@ -180,7 +183,7 @@ if $OPT_UNINSTALL; then
       local tmp
       tmp="$(mktemp)"
       awk -v sentinel="$FLEETMUX_SENTINEL" '
-        $0 == sentinel { skip = 2; next }
+        $0 == sentinel { skip = 1; next }
         skip > 0 { skip--; next }
         { print }
       ' "$rc_file" > "$tmp"
@@ -190,12 +193,13 @@ if $OPT_UNINSTALL; then
   }
   _strip_sentinel_block "$HOME/.bashrc"
   _strip_sentinel_block "$HOME/.zshrc"
+  _strip_sentinel_block "$HOME/.config/fish/config.fish"
 
   # Agent-CLI PATH hygiene snippet (the rc source-line is removed above with the
   # sentinel block; here we drop the standalone snippet file it pointed at).
-  if [ -f "$HOME/.config/fleetmux/agent-path.sh" ]; then
-    rm -f "$HOME/.config/fleetmux/agent-path.sh"
-    ok "Removed: $HOME/.config/fleetmux/agent-path.sh"
+  if [ -d "$HOME/.config/fleetmux/shell" ]; then
+    rm -rf "$HOME/.config/fleetmux/shell"
+    ok "Removed fleetmux shell snippets"
   fi
 
   # Ghostty config: only the fleetmux-managed file; app/binary is left alone.
@@ -203,6 +207,10 @@ if $OPT_UNINSTALL; then
   if [ -f "$GHOSTTY_CONF" ] && grep -qF "$FLEETMUX_SENTINEL" "$GHOSTTY_CONF" 2>/dev/null; then
     rm -f "$GHOSTTY_CONF"
     ok "Removed: $GHOSTTY_CONF"
+  fi
+  if [ -d "$HOME/.config/fleetmux/wallpapers" ]; then
+    rm -rf "$HOME/.config/fleetmux/wallpapers"
+    ok "Removed fleetmux wallpapers"
   fi
 
   # fleetmux-start
@@ -609,41 +617,20 @@ TOML
     ok "Starship config created: $STARSHIP_CONF"
   fi
 
-  # Add starship init line to shell RC (non-destructive: only if absent)
-  _add_starship_init() {
-    local rc_file="$1" init_line="$2"
-    if [ -f "$rc_file" ]; then
-      if grep -qF "starship init" "$rc_file" 2>/dev/null; then
-        ok "Starship init already in $rc_file"
-      else
-        printf '\n%s\n%s\n' "$FLEETMUX_SENTINEL" "$init_line" >> "$rc_file"
-        ok "Added starship init to $rc_file"
-      fi
-    fi
-  }
-
-  CURRENT_SHELL="$(basename "${SHELL:-bash}")"
-  # shellcheck disable=SC2016
-  case "$CURRENT_SHELL" in
-    bash) _add_starship_init "$HOME/.bashrc" 'eval "$(starship init bash)"' ;;
-    zsh)  _add_starship_init "$HOME/.zshrc"  'eval "$(starship init zsh)"' ;;
-    fish) info "Fish shell: add 'starship init fish | source' to ~/.config/fish/config.fish" ;;
-    *)    info "Add starship init for your shell: https://starship.rs/guide/#step-2" ;;
-  esac
 fi # end: ! $OPT_NO_STARSHIP
 
-# ── step 7b: Agent-CLI PATH hygiene ───────────────────────────────────────────
+# ── step 7b: shell quality + Agent-CLI PATH hygiene ──────────────────────────
 # fleetmux is the agent-native tmux distro, so the CLIs it exists to run
 # (claude, codex, cursor-agent, gemini) must be resolvable in the shells tmux
 # panes spawn. Node CLIs installed via nvm/volta/bun often are NOT exported to a
 # plain login shell, so a pane whose shell has a bare PATH dies on
 # `command not found: claude`. We write a standalone snippet and source it from
 # the rc via a single sentinel line (so uninstall's existing strip removes it).
-step "Step 7b — Agent-CLI PATH hygiene"
+step "Step 7b — Shell configuration"
 FLEETMUX_CONF_DIR="$HOME/.config/fleetmux"
-AGENT_PATH_SNIPPET="$FLEETMUX_CONF_DIR/agent-path.sh"
-mkdir -p "$FLEETMUX_CONF_DIR"
-cat > "$AGENT_PATH_SNIPPET" <<'FLEETMUX_AGENT_PATH_SH'
+SHELL_SNIPPET_DIR="$FLEETMUX_CONF_DIR/shell"
+mkdir -p "$SHELL_SNIPPET_DIR"
+cat > "$SHELL_SNIPPET_DIR/common.sh" <<'FLEETMUX_COMMON_SH'
 # fleetmux-managed — agent-CLI PATH hygiene (sourced from your shell rc).
 # Makes node + node-installed agent CLIs (claude, codex, cursor-agent, gemini)
 # resolvable in this shell, so a tmux pane that spawns it can launch them even
@@ -656,28 +643,120 @@ for _fm_d in "$HOME/.local/bin" "$HOME/.bun/bin" "$HOME/.volta/bin" \
 done
 export PATH
 unset _fm_d
-FLEETMUX_AGENT_PATH_SH
-ok "Wrote agent-CLI PATH snippet: $AGENT_PATH_SNIPPET"
+FLEETMUX_COMMON_SH
 
-# Source the snippet from the current shell's rc (non-destructive: only if the
-# rc exists and the line is absent). One sentinel line → uninstall-strip-safe.
-_source_agent_path() {
-  local rc_file="$1"
-  [ -f "$rc_file" ] || return 0
-  if grep -qF 'fleetmux/agent-path.sh' "$rc_file" 2>/dev/null; then
-    ok "Agent-CLI PATH already sourced in $rc_file"
-  else
-    printf '\n%s\n%s\n' "$FLEETMUX_SENTINEL" \
-      '[ -f "$HOME/.config/fleetmux/agent-path.sh" ] && . "$HOME/.config/fleetmux/agent-path.sh"' >> "$rc_file"
-    ok "Sourced agent-CLI PATH from $rc_file"
+cat > "$SHELL_SNIPPET_DIR/bash.sh" <<'FLEETMUX_BASH_SH'
+# fleetmux-managed — sourced from ~/.bashrc
+[ -f "$HOME/.config/fleetmux/shell/common.sh" ] && . "$HOME/.config/fleetmux/shell/common.sh"
+HISTCONTROL=ignoreboth:erasedups
+HISTSIZE=10000
+HISTFILESIZE=20000
+shopt -s histappend checkwinsize 2>/dev/null || true
+bind 'set completion-ignore-case on' 2>/dev/null || true
+bind '"\e[A": history-search-backward' 2>/dev/null || true
+bind '"\e[B": history-search-forward' 2>/dev/null || true
+alias ll='ls -lah'
+alias la='ls -A'
+alias l='ls -CF'
+FLEETMUX_BASH_SH
+
+cat > "$SHELL_SNIPPET_DIR/zsh.sh" <<'FLEETMUX_ZSH_SH'
+# fleetmux-managed — sourced from ~/.zshrc
+[ -f "$HOME/.config/fleetmux/shell/common.sh" ] && . "$HOME/.config/fleetmux/shell/common.sh"
+HISTFILE="${ZDOTDIR:-$HOME}/.zsh_history"
+HISTSIZE=10000
+SAVEHIST=10000
+setopt APPEND_HISTORY SHARE_HISTORY HIST_IGNORE_DUPS HIST_IGNORE_SPACE HIST_REDUCE_BLANKS
+mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}/zsh"
+autoload -Uz compinit && compinit -d "${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zcompdump"
+bindkey -e
+bindkey '^[[A' history-beginning-search-backward
+bindkey '^[[B' history-beginning-search-forward
+alias ll='ls -lah'
+alias la='ls -A'
+alias l='ls -CF'
+FLEETMUX_ZSH_SH
+
+cat > "$SHELL_SNIPPET_DIR/fish.fish" <<'FLEETMUX_FISH'
+# fleetmux-managed — sourced from ~/.config/fish/config.fish
+fish_add_path --path "$HOME/.local/bin" "$HOME/.bun/bin" "$HOME/.volta/bin"
+alias ll='ls -lah'
+alias la='ls -A'
+alias l='ls -CF'
+FLEETMUX_FISH
+
+if ! $OPT_NO_STARSHIP; then
+  printf '%s\n' 'command -v starship >/dev/null 2>&1 && eval "$(starship init bash)"' >> "$SHELL_SNIPPET_DIR/bash.sh"
+  printf '%s\n' 'command -v starship >/dev/null 2>&1 && eval "$(starship init zsh)"' >> "$SHELL_SNIPPET_DIR/zsh.sh"
+  printf '%s\n' 'command -q starship; and starship init fish | source' >> "$SHELL_SNIPPET_DIR/fish.fish"
+fi
+if ! $OPT_NO_ZOXIDE; then
+  printf '%s\n' 'command -v zoxide >/dev/null 2>&1 && eval "$(zoxide init bash)"' >> "$SHELL_SNIPPET_DIR/bash.sh"
+  printf '%s\n' 'command -v zoxide >/dev/null 2>&1 && eval "$(zoxide init zsh)"' >> "$SHELL_SNIPPET_DIR/zsh.sh"
+  printf '%s\n' 'command -q zoxide; and zoxide init fish | source' >> "$SHELL_SNIPPET_DIR/fish.fish"
+fi
+
+_install_shell_source() {
+  local rc_file="$1" source_line="$2"
+  mkdir -p "$(dirname "$rc_file")"
+  if [ -f "$rc_file" ] && grep -qF "$source_line" "$rc_file" 2>/dev/null; then
+    ok "fleetmux shell config already sourced in $rc_file"
+    return 0
   fi
+  if [ -f "$rc_file" ]; then
+    local ts tmp
+    ts="$(_ts)"
+    cp "$rc_file" "${rc_file}.bak-${ts}"
+    tmp="$(mktemp)"
+    awk -v sentinel="$FLEETMUX_SENTINEL" '
+      $0 == sentinel { skip = 1; next }
+      skip > 0 { skip--; next }
+      { print }
+    ' "$rc_file" > "$tmp"
+    mv "$tmp" "$rc_file"
+    warn "Backed up existing $rc_file → ${rc_file}.bak-${ts}"
+  else
+    : > "$rc_file"
+  fi
+  printf '\n%s\n%s\n' "$FLEETMUX_SENTINEL" "$source_line" >> "$rc_file"
+  ok "Installed fleetmux shell config in $rc_file"
 }
 case "$(basename "${SHELL:-bash}")" in
-  bash) _source_agent_path "$HOME/.bashrc" ;;
-  zsh)  _source_agent_path "$HOME/.zshrc"  ;;
-  fish) info "Fish: fleetmux does not manage fish PATH — ensure node/agent CLIs are on PATH (source nvm, or fish_add_path the dir)." ;;
-  *)    info "Ensure your agent CLIs (claude, codex, …) are on PATH for your shell." ;;
+  bash) _install_shell_source "$HOME/.bashrc" '[ -f "$HOME/.config/fleetmux/shell/bash.sh" ] && . "$HOME/.config/fleetmux/shell/bash.sh"' ;;
+  zsh)  _install_shell_source "$HOME/.zshrc"  '[ -f "$HOME/.config/fleetmux/shell/zsh.sh" ] && . "$HOME/.config/fleetmux/shell/zsh.sh"' ;;
+  fish) _install_shell_source "$HOME/.config/fish/config.fish" 'test -f "$HOME/.config/fleetmux/shell/fish.fish"; and source "$HOME/.config/fleetmux/shell/fish.fish"' ;;
+  *)    info "Shell not recognized; snippets are available in $SHELL_SNIPPET_DIR" ;;
 esac
+if $OPT_WITH_FISH && [ "$(basename "${SHELL:-bash}")" != "fish" ]; then
+  _install_shell_source "$HOME/.config/fish/config.fish" 'test -f "$HOME/.config/fleetmux/shell/fish.fish"; and source "$HOME/.config/fleetmux/shell/fish.fish"'
+fi
+
+# ── step 7c: zoxide directory jumping ────────────────────────────────────────
+step "Step 7c — zoxide directory jumping"
+if $OPT_NO_ZOXIDE; then
+  info "--no-zoxide: skipping zoxide"
+elif _binary_present zoxide /opt/homebrew/bin/zoxide /usr/local/bin/zoxide /usr/bin/zoxide; then
+  ok "zoxide already installed"
+else
+  case "$OS_KIND" in
+    Darwin)
+      if command -v brew >/dev/null 2>&1 && brew install zoxide 2>/dev/null; then
+        ok "zoxide installed via Homebrew"
+      else
+        warn "Could not install zoxide; directory jumping will activate automatically if you install it later."
+      fi
+      ;;
+    Linux)
+      if command -v apt-get >/dev/null 2>&1 && sudo apt-get update -qq && sudo apt-get install -y zoxide 2>/dev/null; then
+        ok "zoxide installed via apt"
+      elif command -v dnf >/dev/null 2>&1 && sudo dnf install -y zoxide 2>/dev/null; then
+        ok "zoxide installed via dnf"
+      else
+        warn "Could not install zoxide with apt/dnf; shell startup will remain functional."
+      fi
+      ;;
+  esac
+fi
 
 # ── step 8: Nerd Font ─────────────────────────────────────────────────────────
 step "Step 8 — Nerd Font (JetBrains Mono Nerd)"
@@ -856,11 +935,42 @@ if $OPT_WITH_GHOSTTY; then
 
     if $GHOSTTY_INSTALLED; then
       GHOSTTY_CONF="$HOME/.config/ghostty/config"
-      GHOSTTY_CONF_PRESET=$(cat <<'CFG'
+      GHOSTTY_WALLPAPER_DIR="$HOME/.config/fleetmux/wallpapers"
+      mkdir -p "$GHOSTTY_WALLPAPER_DIR"
+      WALLPAPER_OK=true
+      for wallpaper in fleetmux-aurora.jpg fleetmux-dusk.jpg; do
+        if ! curl -fsSL -o "$GHOSTTY_WALLPAPER_DIR/$wallpaper" "${REPO_URL}/assets/ghostty/$wallpaper" 2>/dev/null; then
+          warn "Could not download $wallpaper — Ghostty will use the theme background without an image."
+          WALLPAPER_OK=false
+        fi
+      done
+      if $WALLPAPER_OK; then
+        ok "Installed two Ghostty wallpapers in $GHOSTTY_WALLPAPER_DIR"
+        GHOSTTY_BACKGROUND=$(cat <<CFG
+background-image = $GHOSTTY_WALLPAPER_DIR/fleetmux-aurora.jpg
+# Alternative: background-image = $GHOSTTY_WALLPAPER_DIR/fleetmux-dusk.jpg
+background-image-opacity = 0.18
+background-image-fit = cover
+background-image-position = center
+CFG
+)
+      else
+        GHOSTTY_BACKGROUND="# Wallpapers unavailable; rerun the installer to retry."
+      fi
+      GHOSTTY_CONF_PRESET=$(cat <<CFG
 # fleetmux-managed — generated by fleetmux installer
 # Customize at ~/.config/ghostty/config — see https://ghostty.org/docs/config
 font-family = JetBrainsMono Nerd Font
+theme = Catppuccin Mocha
+background-opacity = 0.96
+background-opacity-cells = true
+background-blur = 12
+window-padding-x = 10
+window-padding-y = 8
+$GHOSTTY_BACKGROUND
 cursor-style = block
+cursor-style-blink = true
+cursor-opacity = 0.90
 shell-integration = detect
 mouse-hide-while-typing = true
 CFG
