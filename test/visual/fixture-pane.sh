@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ "${1:-}" = frame ]; then
+  [ -n "${2:-}" ] || { printf 'fixture-pane: frame requires a sentinel\n' >&2; exit 64; }
+fi
+
 case "${1:-}" in
   frame)
     printf '\033[2J\033[H'
+    printf '\033[1;37m%s\033[0m\n' "$2"
     printf '\033[1;36m%-66s\033[0m│ \033[1;36m%-30s\033[0m\n' 'Claude Code' 'Shell'
     printf '%-66s│ %-30s\n' '' ''
     printf '\033[1;32m$\033[0m %-64s│ \033[1;32m$\033[0m %-28s\n' 'claude' 'git status --short'
