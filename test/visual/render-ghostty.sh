@@ -45,9 +45,12 @@ swift "$ROOT_DIR/test/visual/display-state.swift" >/dev/null
 
 SCRATCH="$(mktemp -d /private/tmp/fleetmux-visual.XXXXXX)"
 TOKEN="fleetmux-visual-$(basename "$SCRATCH")"
+SENTINEL="FLEETMUX VISUAL FIXTURE"
 EFFECTIVE_CONFIG="$SCRATCH/ghostty.conf"
 RAW_CAPTURE="$SCRATCH/window.png"
 GHOSTTY_PID=""
+
+mkdir -p "$SCRATCH/home" "$SCRATCH/xdg-config"
 
 cleanup() {
   if [ -n "$GHOSTTY_PID" ]; then kill "$GHOSTTY_PID" >/dev/null 2>&1 || true; fi
@@ -76,8 +79,9 @@ BUNDLE_ID="dev.fleetmux.visual.${TOKEN//[^A-Za-z0-9]/}"
 codesign --force --deep --sign - "$ISOLATED_APP" >/dev/null 2>&1
 
 AFTER_WINDOWS="$SCRATCH/windows-after.txt"
-open -n "$ISOLATED_APP" --args --config-file="$EFFECTIVE_CONFIG" \
-  -e /bin/bash "$ROOT_DIR/test/visual/fixture-pane.sh" frame
+open -n --env "HOME=$SCRATCH/home" --env "XDG_CONFIG_HOME=$SCRATCH/xdg-config" \
+  "$ISOLATED_APP" --args --config-default-files=false --config-file="$EFFECTIVE_CONFIG" \
+  -e /bin/bash "$ROOT_DIR/test/visual/fixture-pane.sh" frame "$SENTINEL"
 
 ISOLATED_BIN="$(realpath "$ISOLATED_APP/Contents/MacOS/ghostty")"
 for _ in $(seq 1 40); do
@@ -93,7 +97,8 @@ WINDOW_ROW=""
 WINDOW_ERROR="$SCRATCH/window-error.txt"
 for _ in $(seq 1 40); do
   swift "$ROOT_DIR/test/visual/window-id.swift" --list >"$AFTER_WINDOWS"
-  MATCHING_IDS="$(awk -F '\t' -v pid="$GHOSTTY_PID" '$2 == pid { print $1 }' "$AFTER_WINDOWS")"
+  MATCHING_IDS="$(awk -F '\t' -v pid="$GHOSTTY_PID" \
+    '$2 == pid && $3 >= 500 && $4 >= 300 { print $1 }' "$AFTER_WINDOWS")"
   if [ "$(printf '%s\n' "$MATCHING_IDS" | sed '/^$/d' | wc -l | tr -d ' ')" = 1 ]; then
     WINDOW_ID="$MATCHING_IDS"
     if WINDOW_ROW="$(swift "$ROOT_DIR/test/visual/window-id.swift" --id "$WINDOW_ID" 2>"$WINDOW_ERROR")"; then
@@ -122,6 +127,11 @@ if ! "$CAPTURE_BIN" "$WINDOW_ID" "$RAW_CAPTURE"; then
 fi
 [ -s "$RAW_CAPTURE" ] || { printf 'render-ghostty: capture FAILED: ScreenCaptureKit emitted an empty file\n' >&2; exit 1; }
 
+swift "$ROOT_DIR/test/visual/assert-fixture.swift" "$RAW_CAPTURE" "$SENTINEL" >/dev/null || {
+  printf 'render-ghostty: capture FAILED: selected Ghostty window is not the fixture terminal\n' >&2
+  exit 1
+}
+
 read -r PIXEL_WIDTH PIXEL_HEIGHT <<<"$(magick identify -format '%w %h' "$RAW_CAPTURE")"
 [ "$PIXEL_WIDTH" -ge 400 ] && [ "$PIXEL_HEIGHT" -ge 200 ] || {
   printf 'render-ghostty: capture FAILED: implausible image dimensions %sx%s\n' "$PIXEL_WIDTH" "$PIXEL_HEIGHT" >&2
@@ -143,6 +153,6 @@ if ! awk -v mean="$MEAN" -v deviation="$DEVIATION" -v entropy="$ENTROPY" \
   exit 1
 fi
 
-printf 'CAPTURE PASS window_id=%s owner=Ghostty owner_pid=%s sharing=%s bounds=%sx%s image=%sx%s mean=%s deviation=%s entropy=%s output=%s\n' \
+printf 'CAPTURE PASS config_isolated=yes fixture_sentinel=yes window_id=%s owner=Ghostty owner_pid=%s sharing=%s bounds=%sx%s image=%sx%s mean=%s deviation=%s entropy=%s output=%s\n' \
   "$WINDOW_ID" "$WINDOW_OWNER_PID" "$SHARING_STATE" "$BOUNDS_WIDTH" "$BOUNDS_HEIGHT" \
   "$PIXEL_WIDTH" "$CONTENT_HEIGHT" "$MEAN" "$DEVIATION" "$ENTROPY" "$OUTPUT"

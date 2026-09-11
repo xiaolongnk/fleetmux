@@ -51,8 +51,8 @@ let fields = output.split(separator: "\t")
 let width = Int(fields[2]) ?? 0
 let height = Int(fields[3]) ?? 0
 let sharing = Int(fields[4]) ?? -1
-guard width >= 200, height >= 150 else {
-    fputs("window lookup FAILED: matched window bounds are too small (\(width)x\(height))\n", stderr)
+guard width >= 500, height >= 300 else {
+    fputs("window lookup FAILED: fixture terminal bounds are implausible (\(width)x\(height))\n", stderr)
     exit(1)
 }
 print(output)
