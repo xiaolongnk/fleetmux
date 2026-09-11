@@ -153,6 +153,31 @@ own scrollback view ("copy mode") — expected behavior when `mouse on` is set,
 not a hang. Press `q`, `Esc`, or `Ctrl-c` to get back to your shell; nothing
 is lost.
 
+### Visual regression harness (macOS)
+
+Render any Ghostty config against a fixed fleetmux tmux fixture and capture the
+specific Ghostty window (not whichever screen happens to be frontmost):
+
+```bash
+test/visual/render-ghostty.sh \
+  --config-file test/visual/configs/current.conf \
+  --output /tmp/fleetmux-current.png
+```
+
+The harness requires Ghostty, tmux, Swift, and ImageMagick (`magick`). It records
+an isolated Ghostty process, requires exactly one CoreGraphics window owned by
+that process, and captures that id with ScreenCaptureKit. It crops the macOS
+title bar and rejects empty or near-black output. The fixture is deterministic
+ANSI content with a fixed two-pane fleetmux layout, dimensions, status text,
+time, and hostname, so repeated captures are comparable. It exercises Ghostty's
+rendering of an arbitrary config; it does not execute or validate `tmux.conf`.
+`test/visual/configs/contrast.conf` is an intentionally different
+theme/opacity/padding fixture for proving that config changes reach the image.
+
+This is a local macOS/Ghostty visual tool, not a headless CI test. It requires a
+logged-in GUI session, an awake display, Screen Recording permission, and does
+not represent Linux terminals, WSL, Windows, or other terminal emulators.
+
 ---
 
 ## License
