@@ -4,17 +4,15 @@
 running AI coding agents. One command. Looks great out of the box. Status bar surfaces
 agent pane states automatically.
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  claude  shell                                          │
-│                                                         │
-│  > claude                                               │
-│  ✻ Thinking…                                            │
-│                                                         │
-│                                                         │
-│ agents  ⬡ Claude  14:02  hostname                       │
-└─────────────────────────────────────────────────────────┘
-```
+## Preview
+
+The default multi-pane workspace, including the agent-aware status bar:
+
+![fleetmux default multi-pane workspace](docs/images/fleetmux-default.png)
+
+The same workspace at a compact width, with the agent-aware status bar still visible:
+
+![fleetmux compact multi-pane workspace](docs/images/fleetmux-agent-status.png)
 
 ---
 
