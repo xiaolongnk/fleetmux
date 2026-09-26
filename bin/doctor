@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# fleetmux-doctor — did the install actually land, and will an agent pane work?
+# Prints one line per check, exits 1 if anything FAILED. Run it after installing, after
+# a machine migration, or whenever "it worked on my other Mac" — it says exactly which
+# half of the setup is missing instead of leaving you to guess from a broken pane.
+set -uo pipefail
+
+TMUX_CONF_DIR="$HOME/.config/tmux"
+TMUX_CONF="$TMUX_CONF_DIR/tmux.conf"
+LOCAL_CONF="$TMUX_CONF_DIR/local.conf"
+TPM_DIR="$HOME/.tmux/plugins/tpm"
+SENTINEL="# fleetmux-managed"
+
+if [ -t 1 ]; then G=$(tput setaf 2); Y=$(tput setaf 3); R=$(tput setaf 1); B=$(tput bold); N=$(tput sgr0); else G=""; Y=""; R=""; B=""; N=""; fi
+fails=0; warns=0
+ok()   { printf '  %s✓%s %s\n' "$G" "$N" "$*"; }
+warn() { printf '  %s⚠%s %s\n' "$Y" "$N" "$*"; warns=$((warns+1)); }
+bad()  { printf '  %s✗%s %s\n' "$R" "$N" "$*"; fails=$((fails+1)); }
+head_() { printf '\n%s%s%s\n' "$B" "$*" "$N"; }
+
+head_ "tmux"
+if command -v tmux >/dev/null 2>&1; then
+  v="$(tmux -V | awk '{print $2}' | tr -dc '0-9.')"
+  major="${v%%.*}"; minor="${v#*.}"; minor="${minor%%[!0-9]*}"
+  if [ "${major:-0}" -gt 3 ] || { [ "${major:-0}" -eq 3 ] && [ "${minor:-0}" -ge 2 ]; }; then ok "tmux $v"; else bad "tmux $v is older than 3.2 — display-popup and the first-run intro need ≥ 3.2"; fi
+else bad "tmux not on PATH"; fi
+
+head_ "config"
+if [ -f "$TMUX_CONF" ] && grep -qF "$SENTINEL" "$TMUX_CONF"; then ok "$TMUX_CONF is fleetmux's"; else bad "$TMUX_CONF missing or not fleetmux-managed — re-run the installer"; fi
+if [ -L "$HOME/.tmux.conf" ] && [ "$(readlink "$HOME/.tmux.conf")" = "$TMUX_CONF" ]; then ok "\$HOME/.tmux.conf → $TMUX_CONF"; else warn "\$HOME/.tmux.conf is not the fleetmux symlink (tmux ≥ 3.1 reads \$HOME/.config/tmux/tmux.conf anyway)"; fi
+for s in agent-status.sh agent-jump.sh firstrun-popup.sh firstrun-show.sh; do
+  if [ -x "$TMUX_CONF_DIR/scripts/$s" ]; then ok "scripts/$s"; else bad "scripts/$s missing or not executable"; fi
+done
+[ -f "$TMUX_CONF_DIR/CHEATSHEET.md" ] && ok "cheat sheet (prefix + ?)" || warn "CHEATSHEET.md missing — prefix + ? will show a pointer only"
+
+head_ "plugins (TPM)"
+if [ -d "$TPM_DIR" ]; then
+  ok "TPM at $TPM_DIR"
+  for p in tmux-sensible tmux-resurrect tmux-continuum tmux-yank; do
+    [ -d "$HOME/.tmux/plugins/$p" ] && ok "$p" || bad "$p not installed — inside tmux press prefix + I (capital I)"
+  done
+else bad "TPM missing — re-run the installer"; fi
+
+head_ "shell inside panes"
+login_shell="$(basename "${SHELL:-}")"
+ok "login shell: ${SHELL:-?}"
+if [ -f "$LOCAL_CONF" ] && grep -q '^set -g default-shell' "$LOCAL_CONF"; then
+  ds="$(awk '/^set -g default-shell/ {print $4}' "$LOCAL_CONF" | tr -d '"')"
+  [ -x "$ds" ] && ok "panes start $ds (local.conf)" || bad "local.conf points at $ds which is not executable"
+else
+  info_line="panes start \$SHELL of the tmux server (no default-shell set)"
+  [ "$login_shell" = "fish" ] && warn "$info_line — a server started before chsh will keep opening the old shell; re-run the installer with --with-fish to pin it" || ok "$info_line"
+fi
+if [ "$login_shell" = "fish" ]; then
+  [ -f "$HOME/.config/fish/conf.d/fleetmux.fish" ] && ok "fish preset (abbreviations, greeting off, agent PATH)" || warn "no fleetmux fish preset — gst/gco abbreviations and greeting suppression come from your own config only (installer --with-fish adds the preset)"
+fi
+if tmux info >/dev/null 2>&1; then
+  srv_shell="$(tmux show-options -gv default-shell 2>/dev/null || true)"
+  [ -n "$srv_shell" ] && ok "running server: default-shell $srv_shell"
+  conf_m="$(stat -f %m "$TMUX_CONF" 2>/dev/null || stat -c %Y "$TMUX_CONF" 2>/dev/null || echo 0)"
+  srv_pid="$(tmux display-message -p '#{pid}' 2>/dev/null || true)"
+  if [ -n "$srv_pid" ]; then
+    srv_start="$(ps -o lstart= -p "$srv_pid" 2>/dev/null | xargs -I{} date -j -f '%a %b %d %T %Y' '{}' +%s 2>/dev/null || echo 0)"
+    [ "${srv_start:-0}" -gt 0 ] && [ "$srv_start" -lt "$conf_m" ] && warn "tmux server (pid $srv_pid) started before the current config was written — prefix + r to reload, or tmux kill-server for a clean start"
+  fi
+else
+  ok "no tmux server running (checks above apply to the next one)"
+fi
+
+head_ "agent CLIs (as a pane would see them)"
+found=0
+for a in claude codex cursor-agent gemini aider; do
+  if p="$(command -v "$a" 2>/dev/null)"; then ok "$a → $p"; found=$((found+1)); fi
+done
+[ $found -gt 0 ] || warn "no agent CLI on PATH (claude/codex/cursor-agent/gemini/aider) — install one, then the status bar has something to show"
+if [ -f "$HOME/.config/fleetmux/agent-path.sh" ]; then
+  rc="$HOME/.zshrc"; [ "$login_shell" = "bash" ] && rc="$HOME/.bashrc"
+  if [ "$login_shell" = "fish" ]; then ok "PATH hygiene: fish preset handles it"
+  elif grep -qF 'agent-path.sh' "$rc" 2>/dev/null; then ok "PATH hygiene sourced from $rc"; else warn "agent-path.sh exists but $rc does not source it"; fi
+fi
+
+head_ "prompt + font"
+command -v starship >/dev/null 2>&1 && ok "starship $(starship --version 2>/dev/null | head -1 | awk '{print $2}')" || warn "starship not on PATH (optional)"
+# Any Nerd Font will do (the installer ships JetBrains Mono; a user may already have another) — same test the installer uses.
+# (command substitution, not `| grep -q`: under pipefail grep -q's early exit SIGPIPEs find → false negative)
+if [ -n "$(find "$HOME/Library/Fonts" "$HOME/.local/share/fonts" /usr/share/fonts -iname '*nerd*' 2>/dev/null | head -1)" ] || [ -n "$(fc-list 2>/dev/null | grep -i 'nerd' | head -1)" ]; then ok "a Nerd Font is installed (select it in your terminal profile)"; else warn "no Nerd Font found — status-bar icons will render as boxes (installer step 8, or --no-font to skip)"; fi
+
+head_ "detection (live)"
+if tmux info >/dev/null 2>&1; then
+  bar="$("$TMUX_CONF_DIR/scripts/agent-status.sh" 2>/dev/null | sed 's/#\[[^]]*\]//g')"
+  [ -n "$bar" ] && ok "status bar would show: $bar" || ok "no agent panes right now (status bar stays empty until one runs)"
+else
+  ok "start tmux and run an agent; the bar updates every 5 s"
+fi
+
+printf '\n'
+if [ $fails -eq 0 ]; then printf '  %s%s✅ fleetmux is healthy%s (%d warning(s))\n\n' "$G" "$B" "$N" "$warns"; exit 0
+else printf '  %s%s✗ %d problem(s)%s, %d warning(s) — fix the ✗ lines above, then re-run fleetmux-doctor\n\n' "$R" "$B" "$fails" "$N" "$warns"; exit 1; fi

@@ -1,43 +1,46 @@
 # Agent-Pane Detection
 
-fleetmux's status bar and jump bindings work by probing **pane titles** in your
-running tmux session. No daemon or background process is required.
+fleetmux's status bar and jump bindings work by probing the **command running in each
+pane** of your tmux server. No daemon or background process is required.
 
 ---
 
-## How pane-title detection works
+## How detection works
 
-Every 5 seconds, the `agent-status.sh` script runs inside tmux and executes:
+Every 5 seconds, `agent-status.sh` runs inside tmux and executes:
 
 ```bash
-tmux list-panes -a -F '#{pane_title}'
+tmux list-panes -a -F '#{session_name}:#{window_index}.#{pane_index}\t#{pane_current_command}\t#{pane_title}'
 ```
 
-It scans the output for known agent name patterns (case-insensitive):
+and classifies each pane by its **running command** (basename, case-insensitive,
+`.exe` stripped):
 
-| Pattern matched | Indicator shown |
-|-----------------|-----------------|
-| `claude` or `claude-code` | `⬡ Claude` |
-| `cursor` | `▣ Cursor` |
-| `gemini` | `◈ Gemini` |
+| Command | Agent | Indicator |
+|---------|-------|-----------|
+| `claude`, `claude-code` | Claude Code | `⬡ Claude N` |
+| `codex`, `codex-cli` | OpenAI Codex | `◆ Codex N` |
+| `cursor-agent`, `cursor` | Cursor | `▣ Cursor N` |
+| `gemini`, `gemini-cli` | Gemini CLI | `◈ Gemini N` |
+| `node`, `bun`, `deno`, `python*`, `uv` | *generic runtime* — the pane **title** decides (contains `claude`/`codex`/`cursor`/`gemini`?) | as above |
 
-If no pane titles match any pattern, the status bar shows no agent indicators —
-it degrades gracefully with no visual noise.
+`N` is the number of panes. Nothing running → nothing shown.
+
+**Why the command, not the title.** Claude Code sets the pane title to the conversation
+topic (`✳ Fix login bug`), Codex to the current task — on a real server with 12 Claude
+and 16 Codex panes, only 1 title contained the word "claude" and none contained "codex".
+The running command is unambiguous. Titles are consulted only for agents that run under
+a generic runtime (Gemini CLI is a Node program, so its pane says `node`).
+
+`agent-status.sh --list [agent]` prints one line per agent pane (`target  agent  title`);
+`agent-jump.sh <agent|any>` uses it to cycle the jump bindings through every matching pane.
 
 ---
 
-## How agents set their pane title
+## When the title matters (generic-runtime agents)
 
-Most AI agent CLIs set the tmux pane title automatically when they start:
-
-| Agent | Pane title set? | How |
-|-------|----------------|-----|
-| Claude Code (`claude`) | ✓ Yes | Sets `TERM_PROGRAM=claude`; pane title reflects the process |
-| Cursor agent | Partial | Title may be `cursor` or the project name |
-| Gemini CLI (`gemini`) | Partial | Title may be `gemini` or the shell |
-
-If your agent's pane title doesn't include the agent name, set it manually in
-your shell (add to `~/.zshrc` or `~/.bashrc`):
+If your agent runs under `node`/`python` and its pane title doesn't include the agent
+name, set it in your shell (add to `~/.zshrc` or `~/.bashrc`):
 
 ```bash
 # Set tmux pane title to the current command
@@ -66,34 +69,38 @@ preexec() { print -Pn "\e]2;$1\a"; }
 
 ## Customising the jump bindings
 
-The default bindings are in `~/.config/tmux/tmux.conf`:
+The defaults in `~/.config/tmux/tmux.conf`:
 
 ```tmux
-bind a run-shell "tmux select-pane -t $(tmux list-panes -a -F '#{window_index}:#{pane_index} #{pane_title}' | grep -i 'claude\|claude-code' | head -1 | awk '{print $1}') 2>/dev/null || true"
-bind g run-shell "tmux select-pane -t $(tmux list-panes -a -F '#{window_index}:#{pane_index} #{pane_title}' | grep -i 'gemini' | head -1 | awk '{print $1}') 2>/dev/null || true"
+bind a   run-shell "~/.config/tmux/scripts/agent-jump.sh claude"
+bind e   run-shell "~/.config/tmux/scripts/agent-jump.sh codex"
+bind g   run-shell "~/.config/tmux/scripts/agent-jump.sh gemini"
+bind Tab run-shell "~/.config/tmux/scripts/agent-jump.sh any"
 ```
 
-To add a Cursor binding:
+Add your own in `~/.config/tmux/local.conf` (sourced by tmux.conf, kept across upgrades):
 
 ```tmux
-bind u run-shell "tmux select-pane -t $(tmux list-panes -a -F '#{window_index}:#{pane_index} #{pane_title}' | grep -i 'cursor' | head -1 | awk '{print $1}') 2>/dev/null || true"
+bind u run-shell "~/.config/tmux/scripts/agent-jump.sh cursor"
 ```
 
 Reload with `prefix + r`.
 
 ---
 
-## Adding a new agent pattern
+## Adding a new agent
 
-Edit `~/.config/tmux/scripts/agent-status.sh` and add a new block:
+Edit `classify()` in `~/.config/tmux/scripts/agent-status.sh` — one `case` arm per
+command name — and add a counter + indicator line at the bottom:
 
 ```bash
-if echo "$pane_titles" | grep -qi 'codex\|openai-codex'; then
-  out="${out}#[fg=colour46]⬢ Codex#[fg=colour244] "
-fi
+    aider)                     echo aider;  return ;;
+...
+[ "$n_aider" -gt 0 ] && out="${out}#[fg=colour46]⬢ Aider ${n_aider}#[fg=colour244]  "
 ```
 
 Reload the config (`prefix + r`) — the new indicator appears at the next poll.
+`test/agent-status.sh` in the repo shows how to assert it against a fixture.
 
 ---
 

@@ -1,28 +1,62 @@
 #!/usr/bin/env bash
-# fleetmux start — launch a named tmux session with a canonical agent layout.
-# Usage: start [SESSION_NAME]
-# Default session name: "agents"
+# fleetmux-start — launch a tmux session with your agents already running.
 #
-# Layout:
-#   Window 1 "claude"  — full window for Claude Code
-#   Window 2 "shell"   — general shell
+#   fleetmux-start                      session "agents": one Claude Code pane + a shell
+#   fleetmux-start claude codex         one window per agent, each CLI started, + a shell
+#   fleetmux-start -s work claude       name the session "work"
+#   fleetmux-start -l claude claude     -l: same-window layout — agents side by side
+#
+# An agent is any command on your PATH (claude, codex, cursor-agent, gemini, aider…);
+# fleetmux only needs it to be launchable. If it isn't on PATH the pane says so instead
+# of silently opening an empty shell (run fleetmux-doctor to see why).
+# Re-running with an existing session name just attaches.
 
 set -euo pipefail
 
-SESSION="${1:-agents}"
+SESSION="agents"; LAYOUT="windows"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -s|--session) SESSION="$2"; shift 2 ;;
+    -l|--layout)  LAYOUT="panes"; shift ;;
+    -h|--help)    sed -n '2,13p' "$0"; exit 0 ;;
+    *) break ;;
+  esac
+done
+AGENTS=("$@")
+[ ${#AGENTS[@]} -gt 0 ] || AGENTS=(claude)
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then
   echo "Session '$SESSION' already exists — attaching."
   exec tmux attach-session -t "$SESSION"
 fi
 
-# Create session with first window: claude
-tmux new-session -d -s "$SESSION" -n "claude"
-tmux send-keys -t "${SESSION}:claude" "# Run: claude" Enter
+# What to run in a pane: the agent itself, or a loud explanation if it isn't installed.
+launch_cmd() {
+  if command -v "$1" >/dev/null 2>&1; then
+    printf '%s' "$1"
+  else
+    printf 'printf "\\n  fleetmux: %s is not on PATH in this shell.\\n  Install it, or run fleetmux-doctor to see which PATH the panes get.\\n\\n"; exec $SHELL' "$1"
+  fi
+}
 
-# Second window: shell
+first="${AGENTS[0]}"
+tmux new-session -d -s "$SESSION" -n "$first" -x 200 -y 50
+tmux send-keys -t "$SESSION:$first" "$(launch_cmd "$first")" Enter
+
+i=1
+while [ $i -lt ${#AGENTS[@]} ]; do
+  a="${AGENTS[$i]}"
+  if [ "$LAYOUT" = "panes" ]; then
+    tmux split-window -h -t "$SESSION:$first"
+    tmux send-keys -t "$SESSION:$first" "$(launch_cmd "$a")" Enter
+  else
+    tmux new-window -t "$SESSION" -n "$a$i"
+    tmux send-keys -t "$SESSION:$a$i" "$(launch_cmd "$a")" Enter
+  fi
+  i=$((i+1))
+done
+[ "$LAYOUT" = "panes" ] && tmux select-layout -t "$SESSION:$first" even-horizontal >/dev/null
+
 tmux new-window -t "$SESSION" -n "shell"
-
-# Select first window and attach
-tmux select-window -t "${SESSION}:claude"
+tmux select-window -t "$SESSION:$first"
 exec tmux attach-session -t "$SESSION"

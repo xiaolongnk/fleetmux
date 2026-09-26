@@ -24,7 +24,14 @@ agent pane states automatically.
 bash <(curl -fsSL https://raw.githubusercontent.com/xiaolongnk/fleetmux/main/bin/install.sh)
 ```
 
-Then start tmux and press `prefix + I` to install plugins, or use `fleetmux-start` to launch a pre-configured session.
+Then:
+
+```bash
+fleetmux-start claude codex     # a session with both agents already running + a shell
+fleetmux-doctor                 # did everything land? (run this on a new machine first)
+```
+
+Inside tmux, `prefix + I` installs the plugins once; `prefix + Tab` cycles through your agent panes.
 
 **Requirements:** git (for TPM), curl. Nothing else — on macOS, if Homebrew itself
 is missing, the installer bootstraps it for you (see below); tmux/starship/fish/
@@ -58,9 +65,12 @@ log) on every push.
 | Component | What it does |
 |-----------|-------------|
 | `tmux/tmux.conf` | Full config: TPM, 4 plugins, agent-aware status bar, keybindings |
-| `tmux/scripts/agent-status.sh` | Probes pane titles for Claude/Cursor/Gemini; drives the status bar |
-| `bin/install.sh` | Idempotent installer: backs up config, installs TPM, Starship, Nerd Font, links config |
-| `bin/start` | Launches a named session with Claude + Shell windows — installed as `fleetmux-start` |
+| `tmux/scripts/agent-status.sh` | Detects Claude Code / Codex / Cursor / Gemini panes by their running command; drives the status bar (`⬡ Claude 2  ◆ Codex 1`) |
+| `tmux/scripts/agent-jump.sh` | `prefix + Tab/a/e/g` — cycle through agent panes across windows and sessions |
+| `bin/install.sh` | Idempotent installer: backs up config, installs TPM, Starship, Nerd Font, links config; `--with-fish` adds a fish preset + pins the pane shell |
+| `bin/start` | `fleetmux-start claude codex` — a session with your agents already running, one window (or pane) each |
+| `bin/doctor` | `fleetmux-doctor` — post-install health check that fails loudly on a partial setup |
+| `fish/conf.d/fleetmux.fish` | Opt-in fish preset: no greeting, starship, agent CLIs on PATH, git abbreviations (`gst`, `gco`…) |
 | `CHEATSHEET.md` | Full key-binding reference (also accessible via `prefix + ?`) |
 | `AGENTS.md` | How pane-title detection works and how to customize it |
 
@@ -82,8 +92,8 @@ log) on every push.
 | `prefix + \\` | Split pane vertically |
 | `prefix + -` | Split pane horizontally |
 | `prefix + h/j/k/l` | Navigate panes |
-| `prefix + a` | Jump to Claude Code pane |
-| `prefix + g` | Jump to Gemini pane |
+| `prefix + Tab` | Cycle through every agent pane |
+| `prefix + a` / `e` / `g` | Cycle Claude / Codex / Gemini panes |
 | `prefix + r` | Reload config |
 | `prefix + ?` | Open cheat sheet |
 | `prefix + I` | Install / update plugins |
@@ -114,8 +124,16 @@ bind C-a send-prefix
 ```
 Then reload: `prefix + r`.
 
+**Machine-local overrides** (own bindings, `default-shell`, …) go in `~/.config/tmux/local.conf` —
+sourced by the managed config and never overwritten by an upgrade.
+
 **Add a custom agent indicator:**
 Edit `~/.config/tmux/scripts/agent-status.sh` — see [AGENTS.md](AGENTS.md).
+
+**Fish on a fresh machine:** `--with-fish` installs fish, switches your login shell, drops a
+preset into `~/.config/fish/conf.d/fleetmux.fish` (greeting off, starship, agent CLIs on PATH,
+`gst`/`gco`/… abbreviations) and pins tmux's `default-shell` so every pane opens fish — even
+if the tmux server started before `chsh` took effect.
 
 ---
 
@@ -153,38 +171,10 @@ own scrollback view ("copy mode") — expected behavior when `mouse on` is set,
 not a hang. Press `q`, `Esc`, or `Ctrl-c` to get back to your shell; nothing
 is lost.
 
-### Visual regression harness (macOS)
+### Developing
 
-Render any Ghostty config against a fixed fleetmux tmux fixture and capture the
-specific Ghostty window (not whichever screen happens to be frontmost):
-
-```bash
-test/visual/render-ghostty.sh \
-  --config-file test/visual/configs/current.conf \
-  --output /tmp/fleetmux-current.png
-```
-
-The harness requires Ghostty, tmux, Swift, and ImageMagick (`magick`). It launches
-Ghostty with scratch `HOME` and `XDG_CONFIG_HOME` directories, plus the CLI-only
-`config-default-files=false`, so the operator's personal config cannot leak into
-captures. It records the isolated process, selects one terminal-sized
-CoreGraphics window owned by that process, and captures that id with
-ScreenCaptureKit. Apple Vision OCR must then find the fixture sentinel in the
-captured pixels, so a Ghostty dialog or settings window cannot pass. It crops the
-macOS title bar and rejects empty or near-black output. The fixture starts an
-isolated tmux server with the shipped `tmux/tmux.conf`; tmux itself draws the two
-panes, active and inactive borders, window list, session name, status bar, and
-agent indicator. The pane output and volatile status fields (time and hostname)
-are fixed public fixture values, so repeated captures are comparable and cannot
-leak machine state. Pass `--tmux-config-file` to compare another tmux config.
-`test/visual/configs/contrast.conf` is an intentionally different
-theme/opacity/padding fixture for proving that config changes reach the image.
-`test/visual/measure-pane-border.py <capture.png>` locates the real divider and
-reports active/inactive contrast from its rendered RGB pixels.
-
-This is a local macOS/Ghostty visual tool, not a headless CI test. It requires a
-logged-in GUI session, an awake display, Screen Recording permission, and does
-not represent Linux terminals, WSL, Windows, or other terminal emulators.
+`test/README.md` describes the unit test for agent detection, the repeatability test the
+CI runs on every push, and the Ghostty visual harness for eyeballing theme changes.
 
 ---
 

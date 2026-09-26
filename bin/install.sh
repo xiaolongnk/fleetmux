@@ -149,7 +149,7 @@ if $OPT_UNINSTALL; then
     ok "Removed: $TMUX_CONF_FILE"
   fi
   if [ -f "$TMUX_CONF_DIR/scripts/agent-status.sh" ] || [ -f "$TMUX_CONF_DIR/scripts/firstrun-popup.sh" ] || [ -f "$TMUX_CONF_DIR/scripts/firstrun-show.sh" ]; then
-    rm -f "$TMUX_CONF_DIR/scripts/agent-status.sh" "$TMUX_CONF_DIR/scripts/firstrun-popup.sh" "$TMUX_CONF_DIR/scripts/firstrun-show.sh"
+    rm -f "$TMUX_CONF_DIR/scripts/agent-status.sh" "$TMUX_CONF_DIR/scripts/agent-jump.sh" "$TMUX_CONF_DIR/scripts/firstrun-popup.sh" "$TMUX_CONF_DIR/scripts/firstrun-show.sh"
     ok "Removed fleetmux helper scripts from $TMUX_CONF_DIR/scripts"
   fi
   [ -f "$TMUX_CONF_DIR/CHEATSHEET.md" ] && rm -f "$TMUX_CONF_DIR/CHEATSHEET.md"
@@ -206,11 +206,20 @@ if $OPT_UNINSTALL; then
     ok "Removed: $GHOSTTY_CONF"
   fi
 
-  # fleetmux-start
-  if [ -f "$LOCAL_BIN/fleetmux-start" ]; then
-    rm -f "$LOCAL_BIN/fleetmux-start"
-    ok "Removed: $LOCAL_BIN/fleetmux-start"
-  fi
+  # fleetmux-start / fleetmux-doctor
+  for b in fleetmux-start fleetmux-doctor; do
+    if [ -f "$LOCAL_BIN/$b" ]; then
+      rm -f "$LOCAL_BIN/$b"
+      ok "Removed: $LOCAL_BIN/$b"
+    fi
+  done
+  # fish preset + local.conf: only our sentinel-marked files
+  for f in "$HOME/.config/fish/conf.d/fleetmux.fish" "$TMUX_CONF_DIR/local.conf"; do
+    if [ -f "$f" ] && grep -qF "$FLEETMUX_SENTINEL" "$f" 2>/dev/null; then
+      rm -f "$f"
+      ok "Removed: $f"
+    fi
+  done
 
   printf '\n  %sfleetmux removed.%s\n\n' "$C_GREEN" "$C_RESET"
   echo "  Left in place (fleetmux never removes these automatically):"
@@ -465,6 +474,7 @@ _install_script() {
 }
 
 _install_script agent-status.sh
+_install_script agent-jump.sh
 _install_script firstrun-popup.sh
 _install_script firstrun-show.sh
 
@@ -624,8 +634,6 @@ TOML
     fi
   }
 
-  CURRENT_SHELL="$(basename "${SHELL:-bash}")"
-  # shellcheck disable=SC2016
 fi # end: ! $OPT_NO_STARSHIP
 
 # ── step 7b: Agent-CLI PATH hygiene ───────────────────────────────────────────
@@ -795,8 +803,23 @@ if $OPT_WITH_FISH; then
     fi
   fi
 
-  if [ -d "$HOME/.config/fish" ]; then
-    ok "Existing ~/.config/fish left untouched (fleetmux ships no fish config preset)"
+  # Fish preset: a conf.d drop-in (never touches config.fish) with the defaults a fresh
+  # machine is missing — greeting off, starship, agent-CLI PATH, git abbreviations.
+  FISH_PRESET="$HOME/.config/fish/conf.d/fleetmux.fish"
+  mkdir -p "$HOME/.config/fish/conf.d"
+  if curl -fsSL -o "$FISH_PRESET" "${REPO_URL}/fish/conf.d/fleetmux.fish" 2>/dev/null; then
+    ok "Fish preset installed: $FISH_PRESET (gst/gco…, no greeting, starship, agent PATH)"
+  else
+    warn "Could not download fish/conf.d/fleetmux.fish — fish will work but without the preset"
+  fi
+  # Pin the pane shell so a tmux server started before chsh (or from a terminal that
+  # still runs the old shell) opens fish in every pane. tmux.conf sources local.conf.
+  LOCAL_CONF="$TMUX_CONF_DIR/local.conf"
+  if [ -f "$LOCAL_CONF" ] && ! grep -qF "$FLEETMUX_SENTINEL" "$LOCAL_CONF"; then
+    warn "$LOCAL_CONF exists and is yours — add: set -g default-shell $FISH_PATH"
+  else
+    printf '%s — machine-local tmux overrides (safe to edit; kept across upgrades)\nset -g default-shell %s\n' "$FLEETMUX_SENTINEL" "$FISH_PATH" > "$LOCAL_CONF"
+    ok "Panes will start fish: $LOCAL_CONF"
   fi
   info "Starship + Nerd Font already configured above will work under fish automatically."
 else
@@ -893,6 +916,13 @@ else
   chmod +x "$FMUX_START_DEST"
   ok "fleetmux-start installed: $FMUX_START_DEST"
 fi
+FMUX_DOCTOR_DEST="$LOCAL_BIN/fleetmux-doctor"
+if ! curl -fsSL -o "$FMUX_DOCTOR_DEST" "${REPO_URL}/bin/doctor" 2>/dev/null; then
+  warn "Could not download bin/doctor — fleetmux-doctor not installed."
+else
+  chmod +x "$FMUX_DOCTOR_DEST"
+  ok "fleetmux-doctor installed: $FMUX_DOCTOR_DEST"
+fi
 
 if ! printf '%s' "$PATH" | tr ':' '\n' | grep -qxF "$LOCAL_BIN" 2>/dev/null; then
   warn "$HOME/.local/bin is not on your PATH. Add to your shell RC:"
@@ -917,17 +947,18 @@ if $OPT_WITH_GHOSTTY && [ -f "$HOME/.config/ghostty/config" ]; then
   printf '    • Ghostty config                 %s\n' "$HOME/.config/ghostty/config"
 fi
 printf '    • fleetmux-start                 %s\n' "$FMUX_START_DEST"
+printf '    • fleetmux-doctor                %s\n' "$FMUX_DOCTOR_DEST"
 
 cat <<EOF
 
   ${C_BOLD}Next steps:${C_RESET}
-    1. Start (or restart) tmux:       ${C_BOLD}tmux${C_RESET}  or  ${C_BOLD}fleetmux-start${C_RESET}
+    1. Launch your agents:            ${C_BOLD}fleetmux-start claude codex${C_RESET}   (or plain ${C_BOLD}tmux${C_RESET})
     2. Install plugins:               ${C_BOLD}prefix + I${C_RESET}  (capital I)
        Downloads tmux-sensible, tmux-resurrect, tmux-continuum, tmux-yank.
-    3. Open the cheat sheet:          ${C_BOLD}prefix + ?${C_RESET}
-    4. Run an AI agent in a pane — status bar detects it automatically.
+    3. Jump between agents:           ${C_BOLD}prefix + Tab${C_RESET}  (a = Claude, e = Codex, g = Gemini)
+    4. Cheat sheet:                   ${C_BOLD}prefix + ?${C_RESET}     Health check: ${C_BOLD}fleetmux-doctor${C_RESET}
 
-  ${C_BOLD}Prefix key:${C_RESET} Ctrl-b  (default — see CHEATSHEET.md to switch to Ctrl-a)
+  ${C_BOLD}Prefix key:${C_RESET} Ctrl-q  (see CHEATSHEET.md to change it)
 
   ${C_BOLD}Upgrade anytime:${C_RESET}
     bash <(curl -fsSL ${REPO_URL}/bin/install.sh)
@@ -941,4 +972,12 @@ else
   printf '  📱  Running Claude Code agents in tmux? Monitor them from your iPhone with\n'
   printf '      Termio — the mobile companion for AI agent workflows.\n'
   printf '      %shttps://termio.xyz%s\n\n' "$C_BLUE" "$C_RESET"
+fi
+
+# ── step 13: health check ─────────────────────────────────────────────────────
+# Fails loudly on a partial install (a half-applied setup is invisible on a machine that
+# was already configured by hand — this is what catches it on a fresh one).
+if [ -x "${FMUX_DOCTOR_DEST:-}" ]; then
+  step "Health check (fleetmux-doctor)"
+  "$FMUX_DOCTOR_DEST" || warn "fleetmux-doctor found problems — see the ✗ lines above"
 fi

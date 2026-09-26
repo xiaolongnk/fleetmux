@@ -1,7 +1,7 @@
 # fleetmux — Key Binding Cheat Sheet
 
-> **Prefix key:** `Ctrl-b` (default)
-> To use `Ctrl-a` instead, uncomment the three lines in `~/.config/tmux/tmux.conf`.
+> **Prefix key:** `Ctrl-q` (default)
+> To change it, edit the three `prefix` lines near the top of `~/.config/tmux/tmux.conf`.
 
 ---
 
@@ -39,13 +39,17 @@
 
 ## Agent-pane jumps
 
+Each press goes to the NEXT pane running that agent (wraps around), across windows and sessions.
+
 | Key | Action |
 |-----|--------|
-| `prefix + a` | Jump to first Claude Code pane |
-| `prefix + g` | Jump to first Gemini pane |
+| `prefix + Tab` | Cycle through every agent pane |
+| `prefix + a` | Cycle Claude Code panes |
+| `prefix + e` | Cycle Codex panes |
+| `prefix + g` | Cycle Gemini panes |
 
-> Cursor pane binding: add `bind u run-shell "tmux select-pane -t ..."` to
-> `~/.config/tmux/tmux.conf` (see AGENTS.md for the full pattern).
+> Add one for Cursor: `bind u run-shell "~/.config/tmux/scripts/agent-jump.sh cursor"` in
+> `~/.config/tmux/local.conf`.
 
 ## Copy mode
 
@@ -82,22 +86,24 @@
 
 ## Quick recipes
 
-**Start a new agent session:**
+**Launch your agents, already running, one window each:**
 ```bash
-tmux new-session -s work
-# or use the bundled helper (run from the cloned repo):
-bash bin/start
-```
-
-**Run Claude Code in a pane:**
-```bash
-claude
+fleetmux-start claude codex          # session "agents": claude | codex | shell
+fleetmux-start -l claude claude      # -l: side by side in one window
+fleetmux-start -s work gemini        # named session
 ```
 
 **Check the status bar:**
-The bottom of your terminal shows detected agent panes (⬡ Claude, ▣ Cursor, ◈ Gemini).
-If no agents appear in the bar, ensure your pane title includes the agent name.
-Set pane title manually: `printf '\033]2;claude\033\\'`
+The bottom of your terminal counts the panes running each agent
+(`⬡ Claude 2  ◆ Codex 1  ▣ Cursor 1  ◈ Gemini 1`), detected from the pane's running
+command — no title tricks needed. Empty means no agent is running.
+
+**Something looks wrong on a new machine:**
+```bash
+fleetmux-doctor
+```
+Checks config, plugins, pane shell, fish preset, agent CLIs on PATH, font, and live
+detection; every ✗ line says what to do.
 
 ---
 
