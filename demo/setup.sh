@@ -23,15 +23,30 @@ export PATH="$D/bin:$PATH"
 
 S=demo
 tmux -L "$S" kill-server 2>/dev/null
-tmux -L "$S" -f "$HOME/.config/tmux/tmux.conf" new-session -d -s agents -n agents -x 150 -y 36 \
-  "claude 'Claude Code' busy 'Refactor auth middleware'"
-tmux -L "$S" split-window -h -t agents "codex 'Codex' idle 'Write quickstart docs'"
-tmux -L "$S" split-window -v -t agents:agents.1 "claude 'Claude Code' attention 'Fix flaky build'"
-tmux -L "$S" split-window -v -t agents:agents.2 "codex 'Codex' busy 'Migrate settings table'"
-tmux -L "$S" select-layout -t agents tiled
+if [ "${FLEETMUX_DEMO_LAYOUT:-}" = vertical ]; then
+  # phone-shaped recording (demo-vertical.tape): two panes stacked, bigger type
+  tmux -L "$S" -f "$HOME/.config/tmux/tmux.conf" new-session -d -s agents -n agents -x 60 -y 60 \
+    "claude 'Claude Code' attention 'Fix flaky build'"
+  tmux -L "$S" split-window -v -t agents "codex 'Codex' busy 'Migrate settings table'"
+  tmux -L "$S" split-window -v -t agents:agents.2 "codex 'Codex' idle 'Write quickstart docs'"
+  tmux -L "$S" select-layout -t agents even-vertical
+  # 60 columns: no session name on the left, no clock — the agent fragment is the point
+  tmux -L "$S" set -g status-left ''
+  tmux -L "$S" set -g window-status-format ''
+  tmux -L "$S" set -g window-status-current-format ''
+  tmux -L "$S" set -g status-right-length 58
+  VERT_RIGHT='#(~/.config/tmux/scripts/agent-status.sh)'
+else
+  tmux -L "$S" -f "$HOME/.config/tmux/tmux.conf" new-session -d -s agents -n agents -x 150 -y 36 \
+    "claude 'Claude Code' busy 'Refactor auth middleware'"
+  tmux -L "$S" split-window -h -t agents "codex 'Codex' idle 'Write quickstart docs'"
+  tmux -L "$S" split-window -v -t agents:agents.1 "claude 'Claude Code' attention 'Fix flaky build'"
+  tmux -L "$S" split-window -v -t agents:agents.2 "codex 'Codex' busy 'Migrate settings table'"
+  tmux -L "$S" select-layout -t agents tiled
+fi
 tmux -L "$S" select-pane -t agents:agents.1
 tmux -L "$S" set -g status-interval 1
 tmux -L "$S" set -g default-command "env PS1='~/work $ ' bash --norc --noprofile"   # clean prompt, no hostname
-tmux -L "$S" set -g status-right '#(~/.config/tmux/scripts/agent-status.sh)#[fg=colour244] 14:02 #[fg=colour252]fleetmux '
+tmux -L "$S" set -g status-right "${VERT_RIGHT:-#(~/.config/tmux/scripts/agent-status.sh)#[fg=colour244] 14:02 #[fg=colour252]fleetmux }"
 clear
 exec tmux -L "$S" attach -t agents
