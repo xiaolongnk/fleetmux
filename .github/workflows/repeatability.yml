@@ -27,5 +27,8 @@ jobs:
       - name: Agent detection unit test
         run: bash test/agent-status.sh
 
+      - name: Fish preset clean-box test (--with-fish)
+        run: bash test/fish-preset.sh
+
       - name: Repeatability test (run install.sh twice, diff state)
         run: bash test/repeatability.sh

@@ -12,7 +12,7 @@ agent pane states automatically.
 │  ✻ Thinking…                                            │
 │                                                         │
 │                                                         │
-│ agents  ⬡ Claude  14:02  hostname                       │
+│ agents      ⬡ Claude 2 ●1  ◆ Codex 1   14:02  hostname  │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -31,7 +31,8 @@ fleetmux-start claude codex     # a session with both agents already running + a
 fleetmux-doctor                 # did everything land? (run this on a new machine first)
 ```
 
-Inside tmux, `prefix + I` installs the plugins once; `prefix + Tab` cycles through your agent panes.
+Inside tmux, `prefix + I` installs the plugins once; `prefix + Tab` cycles through your agent panes
+and `prefix + Enter` jumps to the next agent that is **waiting for you** (idle, or asking for approval).
 
 **Requirements:** git (for TPM), curl. Nothing else — on macOS, if Homebrew itself
 is missing, the installer bootstraps it for you (see below); tmux/starship/fish/
@@ -65,8 +66,8 @@ log) on every push.
 | Component | What it does |
 |-----------|-------------|
 | `tmux/tmux.conf` | Full config: TPM, 4 plugins, agent-aware status bar, keybindings |
-| `tmux/scripts/agent-status.sh` | Detects Claude Code / Codex / Cursor / Gemini panes by their running command; drives the status bar (`⬡ Claude 2  ◆ Codex 1`) |
-| `tmux/scripts/agent-jump.sh` | `prefix + Tab/a/e/g` — cycle through agent panes across windows and sessions |
+| `tmux/scripts/agent-status.sh` | Detects Claude Code / Codex / Cursor / Gemini panes by their running command and reads each pane's state from its screen; drives the status bar (`⬡ Claude 2 ●1  ◆ Codex 1` — amber ●N = panes waiting for you) |
+| `tmux/scripts/agent-jump.sh` | `prefix + Tab/a/e/g` cycle through agent panes; `prefix + Enter` goes to the next one waiting for you |
 | `bin/install.sh` | Idempotent installer: backs up config, installs TPM, Starship, Nerd Font, links config; `--with-fish` adds a fish preset + pins the pane shell |
 | `bin/start` | `fleetmux-start claude codex` — a session with your agents already running, one window (or pane) each |
 | `bin/doctor` | `fleetmux-doctor` — post-install health check that fails loudly on a partial setup |
@@ -92,6 +93,7 @@ log) on every push.
 | `prefix + \\` | Split pane vertically |
 | `prefix + -` | Split pane horizontally |
 | `prefix + h/j/k/l` | Navigate panes |
+| `prefix + Enter` | Next agent pane that needs you (idle or awaiting approval) |
 | `prefix + Tab` | Cycle through every agent pane |
 | `prefix + a` / `e` / `g` | Cycle Claude / Codex / Gemini panes |
 | `prefix + r` | Reload config |

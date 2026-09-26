@@ -26,6 +26,21 @@ and classifies each pane by its **running command** (basename, case-insensitive,
 
 `N` is the number of panes. Nothing running → nothing shown.
 
+### State: busy, attention, idle
+
+tmux has no per-pane activity clock, but every agent prints the same tells on its screen, so
+`agent-status.sh` reads the last 8 lines of each agent pane (`tmux capture-pane`):
+
+| Screen contains | State | Meaning |
+|---|---|---|
+| `esc to interrupt` / `esc to cancel` / a braille spinner `⠇` | **busy** | still working — leave it |
+| `Do you want to proceed`, `❯ 1. Yes`, `(y/n)`, `Allow`, `Approve` | **attention** | asking for approval |
+| neither | **idle** | finished, waiting for your next message |
+
+The status bar shows attention + idle as an amber `●N` after the agent's count; `prefix + Enter`
+(`agent-jump.sh waiting`) cycles through exactly those panes. `agent-status.sh --list` prints
+the state per pane if you want to script on it.
+
 **Why the command, not the title.** Claude Code sets the pane title to the conversation
 topic (`✳ Fix login bug`), Codex to the current task — on a real server with 12 Claude
 and 16 Codex panes, only 1 title contained the word "claude" and none contained "codex".

@@ -43,6 +43,7 @@ Each press goes to the NEXT pane running that agent (wraps around), across windo
 
 | Key | Action |
 |-----|--------|
+| `prefix + Enter` | Next agent that is **waiting for you** (idle or asking for approval) |
 | `prefix + Tab` | Cycle through every agent pane |
 | `prefix + a` | Cycle Claude Code panes |
 | `prefix + e` | Cycle Codex panes |
@@ -94,9 +95,10 @@ fleetmux-start -s work gemini        # named session
 ```
 
 **Check the status bar:**
-The bottom of your terminal counts the panes running each agent
-(`⬡ Claude 2  ◆ Codex 1  ▣ Cursor 1  ◈ Gemini 1`), detected from the pane's running
-command — no title tricks needed. Empty means no agent is running.
+The bottom of your terminal counts the panes running each agent, and how many of them are
+waiting for you: `⬡ Claude 2 ●1  ◆ Codex 1` = two Claude panes, one of them idle or asking
+for approval. Detected from the pane's running command and its screen — no title tricks.
+Empty means no agent is running. `prefix + Enter` takes you to the next ● pane.
 
 **Something looks wrong on a new machine:**
 ```bash

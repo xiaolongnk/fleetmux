@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# agent-jump.sh [claude|codex|cursor|gemini|any] — cycle through the panes running that
-# agent. Each press moves to the NEXT matching pane after the current one (wrapping), so
+# agent-jump.sh [claude|codex|cursor|gemini|any|waiting] — cycle through the panes running that
+# agent ("waiting" = any agent pane that is idle or asking for approval). Each press moves to the NEXT matching pane after the current one (wrapping), so
 # with three Claude panes open, prefix+a visits all three in turn instead of always
 # landing on the first. Bound in tmux.conf; uses the same probe as the status bar.
 set -uo pipefail
