@@ -4,17 +4,11 @@
 running AI coding agents. One command. Looks great out of the box. Status bar surfaces
 agent pane states automatically.
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  claude  shell                                          │
-│                                                         │
-│  > claude                                               │
-│  ✻ Thinking…                                            │
-│                                                         │
-│                                                         │
-│ agents      ⬡ Claude 2 ●1  ◆ Codex 1   14:02  hostname  │
-└─────────────────────────────────────────────────────────┘
-```
+![fleetmux: the status bar counts your agent panes and marks the ones waiting for you; prefix+Enter jumps there](docs/assets/fleetmux-demo.gif)
+
+*Four agents in one window. The bar reads `⬡ Claude 2 ●1  ◆ Codex 2 ●1` — one Claude pane is asking
+for approval, one Codex pane is idle — and `Ctrl-q Enter` takes you to the next one that needs you.
+Recorded against stand-in agent CLIs (`demo/`); detection and jumps are the real thing.*
 
 ---
 
@@ -60,6 +54,9 @@ run.sh runs `install.sh` twice and diffs the resulting state + install-call
 log) on every push.
 
 ---
+
+**Just want the status bar in your own tmux config?** It's a TPM plugin on its own:
+[`tmux-agent-status`](https://github.com/xiaolongnk/tmux-agent-status) — `set -g @plugin 'xiaolongnk/tmux-agent-status'`.
 
 ## What's included
 
