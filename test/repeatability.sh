@@ -18,7 +18,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FLEETMUX_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
-TEST_ROOT="$(mktemp -d -t fleetmux-repeatability)"
+TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/fleetmux-repeatability.XXXXXX")"
 trap 'rm -rf "$TEST_ROOT"' EXIT
 
 mkdir -p "$TEST_ROOT/home" "$TEST_ROOT/fakebin" "$TEST_ROOT/logs"
@@ -49,15 +49,19 @@ fi
 exit 0
 BREW
 
-# ── fake git — only TPM's `git clone` call; no real network ────────────────
+# ── fake git — only the TPM and tmux-agent-status `git clone` calls; no real
+# network. Each fake clone leaves the file install.sh's detect-then-skip looks
+# for, so run 2 must find both "already installed" ─────────────────────────
 cat > "$TEST_ROOT/fakebin/git" <<'GITSTUB'
 #!/bin/bash
 echo "$*" >> "$GIT_LOG"
 if [ "$1" = "clone" ]; then
   dest="${*: -1}"
   mkdir -p "$dest"
-  : > "$dest/tpm"
-  chmod +x "$dest/tpm"
+  case "$*" in
+    *tmux-agent-status*) : > "$dest/agent-status.tmux" ;;
+    *) : > "$dest/tpm"; chmod +x "$dest/tpm" ;;
+  esac
 fi
 exit 0
 GITSTUB

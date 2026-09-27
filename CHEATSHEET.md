@@ -49,8 +49,9 @@ Each press goes to the NEXT pane running that agent (wraps around), across windo
 | `prefix + e` | Cycle Codex panes |
 | `prefix + g` | Cycle Gemini panes |
 
-> Add one for Cursor: `bind u run-shell "~/.config/tmux/scripts/agent-jump.sh cursor"` in
-> `~/.config/tmux/local.conf`.
+> These keys come from the `tmux-agent-status` plugin. Add one for Cursor with
+> `set -g @agent_status_jump_cursor 'u'` in `~/.config/tmux/local.conf`; set an option to `''`
+> (e.g. `@agent_status_jump_gemini`) to leave that key alone.
 
 ## Copy mode
 
@@ -78,6 +79,7 @@ Each press goes to the NEXT pane running that agent (wraps around), across windo
 
 | Plugin | What it does |
 |--------|-------------|
+| `tmux-agent-status` | Agent counts + ● waiting marker in the status bar, and the jump keys above |
 | `tmux-sensible` | Sane defaults everyone agrees on |
 | `tmux-resurrect` | Save and restore sessions across reboots |
 | `tmux-continuum` | Auto-save sessions every 15 min (restore on start) |
@@ -98,7 +100,8 @@ fleetmux-start -s work gemini        # named session
 The bottom of your terminal counts the panes running each agent, and how many of them are
 waiting for you: `⬡ Claude 2 ●1  ◆ Codex 1` = two Claude panes, one of them idle or asking
 for approval. Detected from the pane's running command and its screen — no title tricks.
-Empty means no agent is running. `prefix + Enter` takes you to the next ● pane.
+Empty means no agent is running. `prefix + Enter` takes you to the next ● pane. Raw view:
+`~/.tmux/plugins/tmux-agent-status/scripts/agent-status.sh --list`.
 
 **Something looks wrong on a new machine:**
 ```bash

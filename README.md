@@ -57,25 +57,26 @@ log) on every push.
 
 **Just want the status bar in your own tmux config?** It's a TPM plugin on its own:
 [`tmux-agent-status`](https://github.com/xiaolongnk/tmux-agent-status) — `set -g @plugin 'xiaolongnk/tmux-agent-status'`.
+fleetmux consumes that same plugin; the detection and jump code lives only there.
 
 ## What's included
 
 | Component | What it does |
 |-----------|-------------|
-| `tmux/tmux.conf` | Full config: TPM, 4 plugins, agent-aware status bar, keybindings |
-| `tmux/scripts/agent-status.sh` | Detects Claude Code / Codex / Cursor / Gemini panes by their running command and reads each pane's state from its screen; drives the status bar (`⬡ Claude 2 ●1  ◆ Codex 1` — amber ●N = panes waiting for you) |
-| `tmux/scripts/agent-jump.sh` | `prefix + Tab/a/e/g` cycle through agent panes; `prefix + Enter` goes to the next one waiting for you |
-| `bin/install.sh` | Idempotent installer: backs up config, installs TPM, Starship, Nerd Font, links config; `--with-fish` adds a fish preset + pins the pane shell |
+| `tmux/tmux.conf` | Full config: TPM, 5 plugins, agent-aware status bar (`#{agent_status}` placeholder), keybindings |
+| [`tmux-agent-status`](https://github.com/xiaolongnk/tmux-agent-status) (plugin, cloned by the installer) | Detects Claude Code / Codex / Cursor / Gemini panes by their running command and reads each pane's state from its screen; drives the status bar (`⬡ Claude 2 ●1  ◆ Codex 1` — amber ●N = panes waiting for you) and binds `prefix + Enter` (next pane waiting for you) and `prefix + Tab/a/e/g` (cycle agent panes) |
+| `bin/install.sh` | Idempotent installer: backs up config, installs TPM + the tmux-agent-status plugin, Starship, Nerd Font, links config; `--with-fish` adds a fish preset + pins the pane shell |
 | `bin/start` | `fleetmux-start claude codex` — a session with your agents already running, one window (or pane) each |
 | `bin/doctor` | `fleetmux-doctor` — post-install health check that fails loudly on a partial setup |
 | `fish/conf.d/fleetmux.fish` | Opt-in fish preset: no greeting, starship, agent CLIs on PATH, git abbreviations (`gst`, `gco`…) |
 | `CHEATSHEET.md` | Full key-binding reference (also accessible via `prefix + ?`) |
-| `AGENTS.md` | How pane-title detection works and how to customize it |
+| `AGENTS.md` | How agent-pane detection works and how to customize it |
 
 ### Plugins (via TPM)
 
 | Plugin | Purpose |
 |--------|---------|
+| `tmux-agent-status` | Agent counts + waiting marker in the status bar, and the agent jump keys (installed by `install.sh` itself, so it works before the first `prefix + I`) |
 | `tmux-sensible` | Sane defaults: UTF-8, fast escape, 256color |
 | `tmux-resurrect` | Save + restore sessions across reboots |
 | `tmux-continuum` | Auto-save every 15 minutes; restore on startup |
@@ -126,8 +127,13 @@ Then reload: `prefix + r`.
 **Machine-local overrides** (own bindings, `default-shell`, …) go in `~/.config/tmux/local.conf` —
 sourced by the managed config and never overwritten by an upgrade.
 
+**Re-map the agent jump keys:** they are the plugin's `@agent_status_jump_*` options — e.g.
+`set -g @agent_status_jump_cursor 'u'` in `local.conf` adds a Cursor key, `''` unbinds one.
+
 **Add a custom agent indicator:**
-Edit `~/.config/tmux/scripts/agent-status.sh` — see [AGENTS.md](AGENTS.md).
+That's the plugin's job — edit `classify()` in
+`~/.tmux/plugins/tmux-agent-status/scripts/agent-status.sh` (better: send it upstream to
+[tmux-agent-status](https://github.com/xiaolongnk/tmux-agent-status)) — see [AGENTS.md](AGENTS.md).
 
 **Fish on a fresh machine:** `--with-fish` installs fish, switches your login shell, drops a
 preset into `~/.config/fish/conf.d/fleetmux.fish` (greeting off, starship, agent CLIs on PATH,
@@ -142,7 +148,9 @@ if the tmux server started before `chsh` took effect.
 bash <(curl -fsSL https://raw.githubusercontent.com/xiaolongnk/fleetmux/main/bin/install.sh)
 ```
 
-The installer backs up your existing config before replacing it.
+The installer backs up your existing config before replacing it. Upgrading from a pre-1.3
+install removes the old `~/.config/tmux/scripts/agent-status.sh` / `agent-jump.sh` copies —
+the `tmux-agent-status` plugin is their only home now (`prefix + U` updates it).
 
 ---
 
@@ -172,8 +180,10 @@ is lost.
 
 ### Developing
 
-`test/README.md` describes the unit test for agent detection, the repeatability test the
-CI runs on every push, and the Ghostty visual harness for eyeballing theme changes.
+`test/README.md` describes the plugin-consumption test, the repeatability test the CI runs
+on every push, and the Ghostty visual harness for eyeballing theme changes. The agent
+detection unit test lives with the code, in the
+[tmux-agent-status](https://github.com/xiaolongnk/tmux-agent-status) repo.
 
 ---
 

@@ -38,5 +38,5 @@ Sleep 1.5s
 Ctrl+q
 Type "c"
 Sleep 0.6s
-Type "~/.config/tmux/scripts/agent-status.sh --list | column -t -s $'\t'" Enter
+Type "~/.tmux/plugins/tmux-agent-status/scripts/agent-status.sh --list | column -t -s $'\t'" Enter
 Sleep 3.5s

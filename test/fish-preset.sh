@@ -14,8 +14,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
-T="$(mktemp -d -t fleetmux-fish)"
-trap 'tmux -L fmfishtest kill-server 2>/dev/null; rm -rf "$T"' EXIT
+T="$(mktemp -d "${TMPDIR:-/tmp}/fleetmux-fish.XXXXXX")"
+trap 'tmux -L fmfishtest kill-server 2>/dev/null || true; rm -rf "$T"' EXIT
 mkdir -p "$T/home/Library/Fonts" "$T/fakebin" "$T/logs"
 : > "$T/home/Library/Fonts/FooNerdFontMono.ttf"   # skip the font step
 : > "$T/logs/chsh.log"

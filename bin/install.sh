@@ -5,6 +5,12 @@
 # Usage:
 #   bash <(curl -fsSL https://raw.githubusercontent.com/xiaolongnk/fleetmux/main/bin/install.sh) [OPTIONS]
 #
+# v1.3: the agent-aware status bar and jump keys come from the tmux-agent-status
+# TPM plugin (github.com/xiaolongnk/tmux-agent-status), cloned next to TPM in
+# Step 2 so the bar works before the first `prefix + I`. Earlier versions
+# downloaded agent-status.sh / agent-jump.sh into ~/.config/tmux/scripts; an
+# upgrade removes those copies (Step 5) — the plugin is the only source now.
+#
 # v1.2: bootstraps Homebrew itself on macOS if missing (Step 0 — runs
 # Homebrew's own official installer, may prompt for your password in this
 # terminal). Every component (tmux/Starship/Fish/Ghostty) is detected via
@@ -47,6 +53,11 @@ TMUX_CONF_DIR="$HOME/.config/tmux"
 TMUX_CONF_FILE="$TMUX_CONF_DIR/tmux.conf"
 TMUX_CONF_LINK="$HOME/.tmux.conf"
 TPM_DIR="$HOME/.tmux/plugins/tpm"
+# The status-bar plugin lives beside TPM under the name TPM derives from the
+# `@plugin 'xiaolongnk/tmux-agent-status'` line in tmux.conf, so `prefix + U`
+# updates it and `prefix + alt-u` never sees it as an unlisted stray.
+AGENT_STATUS_REPO="${FLEETMUX_AGENT_STATUS_REPO:-https://github.com/xiaolongnk/tmux-agent-status}"
+AGENT_STATUS_DIR="$HOME/.tmux/plugins/tmux-agent-status"
 STARSHIP_CONF="$HOME/.config/starship.toml"
 LOCAL_BIN="$HOME/.local/bin"
 FLEETMUX_SENTINEL="# fleetmux-managed"
@@ -148,17 +159,20 @@ if $OPT_UNINSTALL; then
     rm "$TMUX_CONF_FILE"
     ok "Removed: $TMUX_CONF_FILE"
   fi
+  # agent-status.sh / agent-jump.sh are pre-1.3 leftovers (the plugin replaced them);
+  # a 1.3+ install only has the two firstrun scripts here.
   if [ -f "$TMUX_CONF_DIR/scripts/agent-status.sh" ] || [ -f "$TMUX_CONF_DIR/scripts/firstrun-popup.sh" ] || [ -f "$TMUX_CONF_DIR/scripts/firstrun-show.sh" ]; then
     rm -f "$TMUX_CONF_DIR/scripts/agent-status.sh" "$TMUX_CONF_DIR/scripts/agent-jump.sh" "$TMUX_CONF_DIR/scripts/firstrun-popup.sh" "$TMUX_CONF_DIR/scripts/firstrun-show.sh"
     ok "Removed fleetmux helper scripts from $TMUX_CONF_DIR/scripts"
   fi
   [ -f "$TMUX_CONF_DIR/CHEATSHEET.md" ] && rm -f "$TMUX_CONF_DIR/CHEATSHEET.md"
 
-  # TPM + plugins fleetmux installed (only if TPM itself is present — never
-  # touches a TPM the user set up independently for a DIFFERENT config).
+  # TPM + plugins fleetmux installed, tmux-agent-status included (only if TPM
+  # itself is present — never touches a TPM the user set up independently for
+  # a DIFFERENT config).
   if [ -d "$TPM_DIR" ]; then
     rm -rf "$HOME/.tmux/plugins"
-    ok "Removed TPM + plugins: $HOME/.tmux/plugins"
+    ok "Removed TPM + plugins (incl. tmux-agent-status): $HOME/.tmux/plugins"
   fi
 
   # Starship config: only if it's our sentinel-marked file; a `.fleetmux`
@@ -428,6 +442,26 @@ else
   ok "TPM installed to $TPM_DIR"
 fi
 
+# tmux-agent-status: the status bar + jump keys. Cloned here (not left to
+# `prefix + I`) so the bar is live from the very first tmux launch — the point
+# of fleetmux. Detect-then-skip like everything else; `prefix + U` updates it.
+if [ -f "$AGENT_STATUS_DIR/agent-status.tmux" ]; then
+  ok "tmux-agent-status plugin already installed ($AGENT_STATUS_DIR)"
+else
+  info "Installing tmux-agent-status plugin via git clone…"
+  command -v git >/dev/null 2>&1 || fail "git is required to install the tmux-agent-status plugin. Install git and re-run."
+  if [ -d "$AGENT_STATUS_DIR" ]; then
+    # A directory without the entry point is a broken/partial clone; start over.
+    rm -rf "$AGENT_STATUS_DIR"
+  fi
+  if git clone --depth=1 "$AGENT_STATUS_REPO" "$AGENT_STATUS_DIR"; then
+    ok "tmux-agent-status plugin installed to $AGENT_STATUS_DIR"
+  else
+    warn "Could not clone $AGENT_STATUS_REPO — the status bar stays empty and prefix + Enter/Tab do nothing"
+    warn "until you install it: inside tmux press prefix + I (capital I), or re-run this installer."
+  fi
+fi
+
 # ── step 3: back up existing tmux config ─────────────────────────────────────
 step "Step 3 — Backup existing tmux config"
 if [ -e "$TMUX_CONF_LINK" ] && [ ! -L "$TMUX_CONF_LINK" ]; then
@@ -473,10 +507,24 @@ _install_script() {
   fi
 }
 
-_install_script agent-status.sh
-_install_script agent-jump.sh
 _install_script firstrun-popup.sh
 _install_script firstrun-show.sh
+
+# Upgrade from pre-1.3: agent-status.sh / agent-jump.sh used to be downloaded
+# here; the tmux-agent-status plugin (Step 2) is their only home now. The
+# managed tmux.conf written in Step 4 no longer references them, so a stale
+# copy would just be dead weight — and a confusing one, since editing it would
+# change nothing. These paths were only ever written by this installer.
+LEGACY_REMOVED=""
+for legacy in agent-status.sh agent-jump.sh; do
+  if [ -e "$TMUX_CONF_DIR/scripts/$legacy" ]; then
+    rm -f "$TMUX_CONF_DIR/scripts/$legacy"
+    LEGACY_REMOVED="${LEGACY_REMOVED} $legacy"
+  fi
+done
+if [ -n "$LEGACY_REMOVED" ]; then
+  ok "Removed pre-1.3 script copies from $TMUX_CONF_DIR/scripts:${LEGACY_REMOVED} (now provided by the tmux-agent-status plugin)"
+fi
 
 # ── step 6: cheat sheet ──────────────────────────────────────────────────────
 step "Step 6 — Cheat sheet"
@@ -934,6 +982,9 @@ step "Done"
 printf '\n  %s✅ fleetmux installed.%s\n\n' "$C_GREEN" "$C_RESET"
 printf '  %sWhat was installed:%s\n' "$C_BOLD" "$C_RESET"
 printf '    • tmux config + TPM              %s\n' "$TMUX_CONF_FILE"
+if [ -f "$AGENT_STATUS_DIR/agent-status.tmux" ]; then
+  printf '    • tmux-agent-status plugin       %s\n' "$AGENT_STATUS_DIR"
+fi
 if ! $OPT_MINIMAL && ! $OPT_NO_STARSHIP; then
   printf '    • Starship prompt                %s\n' "$STARSHIP_CONF"
 fi
@@ -955,7 +1006,9 @@ cat <<EOF
     1. Launch your agents:            ${C_BOLD}fleetmux-start claude codex${C_RESET}   (or plain ${C_BOLD}tmux${C_RESET})
     2. Install plugins:               ${C_BOLD}prefix + I${C_RESET}  (capital I)
        Downloads tmux-sensible, tmux-resurrect, tmux-continuum, tmux-yank.
-    3. Jump between agents:           ${C_BOLD}prefix + Tab${C_RESET}  (a = Claude, e = Codex, g = Gemini)
+       (tmux-agent-status — the status bar — is already in place.)
+    3. Jump between agents:           ${C_BOLD}prefix + Enter${C_RESET} = next one waiting for you,
+                                      ${C_BOLD}prefix + Tab${C_RESET} = cycle all  (a = Claude, e = Codex, g = Gemini)
     4. Cheat sheet:                   ${C_BOLD}prefix + ?${C_RESET}     Health check: ${C_BOLD}fleetmux-doctor${C_RESET}
 
   ${C_BOLD}Prefix key:${C_RESET} Ctrl-q  (see CHEATSHEET.md to change it)
@@ -966,7 +1019,7 @@ cat <<EOF
 EOF
 
 if [ -n "${TMUX:-}" ]; then
-  printf '  %s✓%s  agent-status.sh is live. Pane states show in the status bar.\n' "$C_GREEN" "$C_RESET"
+  printf '  %s✓%s  tmux-agent-status is live once the config is reloaded (prefix + r). Pane states show in the status bar.\n' "$C_GREEN" "$C_RESET"
   printf '     📱  See them on your iPhone → %shttps://termio.xyz%s\n\n' "$C_BLUE" "$C_RESET"
 else
   printf '  📱  Running Claude Code agents in tmux? Monitor them from your iPhone with\n'

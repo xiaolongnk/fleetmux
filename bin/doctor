@@ -9,6 +9,7 @@ TMUX_CONF_DIR="$HOME/.config/tmux"
 TMUX_CONF="$TMUX_CONF_DIR/tmux.conf"
 LOCAL_CONF="$TMUX_CONF_DIR/local.conf"
 TPM_DIR="$HOME/.tmux/plugins/tpm"
+AGENT_STATUS_DIR="$HOME/.tmux/plugins/tmux-agent-status"
 SENTINEL="# fleetmux-managed"
 
 if [ -t 1 ]; then G=$(tput setaf 2); Y=$(tput setaf 3); R=$(tput setaf 1); B=$(tput bold); N=$(tput sgr0); else G=""; Y=""; R=""; B=""; N=""; fi
@@ -28,9 +29,19 @@ else bad "tmux not on PATH"; fi
 head_ "config"
 if [ -f "$TMUX_CONF" ] && grep -qF "$SENTINEL" "$TMUX_CONF"; then ok "$TMUX_CONF is fleetmux's"; else bad "$TMUX_CONF missing or not fleetmux-managed — re-run the installer"; fi
 if [ -L "$HOME/.tmux.conf" ] && [ "$(readlink "$HOME/.tmux.conf")" = "$TMUX_CONF" ]; then ok "\$HOME/.tmux.conf → $TMUX_CONF"; else warn "\$HOME/.tmux.conf is not the fleetmux symlink (tmux ≥ 3.1 reads \$HOME/.config/tmux/tmux.conf anyway)"; fi
-for s in agent-status.sh agent-jump.sh firstrun-popup.sh firstrun-show.sh; do
+for s in firstrun-popup.sh firstrun-show.sh; do
   if [ -x "$TMUX_CONF_DIR/scripts/$s" ]; then ok "scripts/$s"; else bad "scripts/$s missing or not executable"; fi
 done
+# Pre-1.3 installs downloaded the status-bar scripts here; since 1.3 they come from the
+# tmux-agent-status plugin and the managed tmux.conf never runs these copies.
+for s in agent-status.sh agent-jump.sh; do
+  [ -e "$TMUX_CONF_DIR/scripts/$s" ] && warn "stale pre-1.3 copy scripts/$s — nothing uses it; re-run the installer to remove it"
+done
+if [ -f "$TMUX_CONF" ]; then
+  grep -qF "@plugin 'xiaolongnk/tmux-agent-status'" "$TMUX_CONF" && ok "tmux.conf declares the tmux-agent-status plugin" || bad "tmux.conf does not declare @plugin 'xiaolongnk/tmux-agent-status' — re-run the installer"
+  grep -qF '#{agent_status}' "$TMUX_CONF" && ok "status-right carries the #{agent_status} placeholder" || bad "tmux.conf has no #{agent_status} placeholder — the plugin has nowhere to put the bar; re-run the installer"
+  grep -qE 'scripts/agent-(status|jump)\.sh' "$TMUX_CONF" && warn "tmux.conf still points at ~/.config/tmux/scripts/agent-*.sh (pre-1.3) — re-run the installer"
+fi
 [ -f "$TMUX_CONF_DIR/CHEATSHEET.md" ] && ok "cheat sheet (prefix + ?)" || warn "CHEATSHEET.md missing — prefix + ? will show a pointer only"
 
 head_ "plugins (TPM)"
@@ -40,6 +51,12 @@ if [ -d "$TPM_DIR" ]; then
     [ -d "$HOME/.tmux/plugins/$p" ] && ok "$p" || bad "$p not installed — inside tmux press prefix + I (capital I)"
   done
 else bad "TPM missing — re-run the installer"; fi
+# The installer clones this one itself (Step 2), so it is a hard failure either way.
+if [ -f "$AGENT_STATUS_DIR/agent-status.tmux" ] && [ -x "$AGENT_STATUS_DIR/scripts/agent-status.sh" ] && [ -x "$AGENT_STATUS_DIR/scripts/agent-jump.sh" ]; then
+  ok "tmux-agent-status (status bar + jump keys) at $AGENT_STATUS_DIR"
+else
+  bad "tmux-agent-status plugin missing or incomplete at $AGENT_STATUS_DIR — re-run the installer, or inside tmux press prefix + I"
+fi
 
 head_ "shell inside panes"
 login_shell="$(basename "${SHELL:-}")"
@@ -87,8 +104,19 @@ if [ -n "$(find "$HOME/Library/Fonts" "$HOME/.local/share/fonts" /usr/share/font
 
 head_ "detection (live)"
 if tmux info >/dev/null 2>&1; then
-  bar="$("$TMUX_CONF_DIR/scripts/agent-status.sh" 2>/dev/null | sed 's/#\[[^]]*\]//g')"
-  [ -n "$bar" ] && ok "status bar would show: $bar" || ok "no agent panes right now (status bar stays empty until one runs)"
+  if [ -x "$AGENT_STATUS_DIR/scripts/agent-status.sh" ]; then
+    bar="$("$AGENT_STATUS_DIR/scripts/agent-status.sh" 2>/dev/null | sed 's/#\[[^]]*\]//g')"
+    [ -n "$bar" ] && ok "status bar would show: $bar" || ok "no agent panes right now (status bar stays empty until one runs)"
+  else
+    bad "cannot probe: tmux-agent-status plugin is not installed (see plugins above)"
+  fi
+  sr="$(tmux show-options -gv status-right 2>/dev/null || true)"
+  case "$sr" in
+    *'#{agent_status}'*) warn "running server still shows the raw #{agent_status} placeholder — the plugin has not initialised; prefix + I to install it, then prefix + r" ;;
+    *agent-status.sh*)   ok "running server: plugin fragment is wired into status-right" ;;
+    "")                  : ;;
+    *)                   warn "running server's status-right has no agent fragment — prefix + r to reload the config" ;;
+  esac
 else
   ok "start tmux and run an agent; the bar updates every 5 s"
 fi

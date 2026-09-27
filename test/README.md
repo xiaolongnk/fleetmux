@@ -2,9 +2,13 @@
 
 | File | What it proves | Where it runs |
 |---|---|---|
-| `agent-status.sh` | The agent probe classifies real-world pane shapes correctly (Claude Code titles are topics, not "claude"; Codex is detected; Gemini under `node` is found by title; a shell pane is not an agent). Feeds fixtures through `FLEETMUX_PANES`. | CI, every push |
+| `plugin-consumed.sh` | The status bar and jump keys come from the `tmux-agent-status` TPM plugin and from nowhere else: the repo ships no `agent-status.sh` / `agent-jump.sh` copies, `tmux.conf` declares the plugin and carries the `#{agent_status}` placeholder instead of hand-written binds, `install.sh` clones the plugin next to TPM and deletes pre-1.3 script copies on upgrade, `doctor` checks the plugin. With tmux present it also starts a server from the installed config and asserts the placeholder was substituted and `prefix + Enter` is bound. Sandboxed like `repeatability.sh`. | CI, every push |
 | `repeatability.sh` | Running `install.sh` twice converges: identical file list + content, zero `brew install` / `git clone` on run 2. Uses a scratch `HOME` and `FLEETMUX_REPO_URL=file://…`. | CI (macOS), every push |
+| `fish-preset.sh` | `install.sh --with-fish` in a clean box: fish preset, pinned pane shell, `--uninstall` removes both. | CI (macOS), every push |
 | `visual/` | Renders the shipped tmux config in an isolated Ghostty and captures the window, for eyeballing/measuring theme changes. | by hand, macOS only |
+
+The agent detection unit test (`FLEETMUX_PANES` fixtures through `agent-status.sh`) moved with
+the code to the [tmux-agent-status](https://github.com/xiaolongnk/tmux-agent-status) repo.
 
 ## Visual regression harness (macOS)
 

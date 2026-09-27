@@ -122,7 +122,7 @@ if [ "$FIXTURE" = frame ]; then
   cp "$TMUX_CONFIG_FILE" "$EFFECTIVE_TMUX_CONFIG"
   sed -i '' \
     -e 's|#(~/.tmux/plugins/tmux-continuum/scripts/continuum_save.sh)||' \
-    -e 's|#(~/.config/tmux/scripts/agent-status.sh 2>/dev/null)|agents  ⬡ Claude |' \
+    -e 's|#{agent_status}|agents  ⬡ Claude |' \
     -e 's|%H:%M|12:34|' \
     -e 's|#h|demo-host|' \
     "$EFFECTIVE_TMUX_CONFIG"

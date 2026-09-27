@@ -1,15 +1,27 @@
 #!/usr/bin/env bash
 # Sourced by demo/demo.tape inside the vhs shell: builds an isolated tmux session with four
-# fake agent panes and attaches to it. Uses the REPO's tmux.conf and scripts (not the
-# machine's install) via a scratch HOME, so the recording never shows personal state.
+# fake agent panes and attaches to it. Uses the REPO's tmux.conf, its firstrun scripts and a
+# fresh clone of the tmux-agent-status plugin (not the machine's install) via a scratch HOME,
+# so the recording never shows personal state.
+#   FLEETMUX_AGENT_STATUS_SRC=/path/to/checkout   use a local plugin checkout instead of cloning
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-D="$(mktemp -d -t fleetmux-demo)"
+D="$(mktemp -d "${TMPDIR:-/tmp}/fleetmux-demo.XXXXXX")"
 export HOME="$D/home"
+PLUGIN="$HOME/.tmux/plugins/tmux-agent-status"
 mkdir -p "$HOME/.config/tmux/scripts" "$HOME/.tmux/plugins/tpm/bin" "$D/bin"
 # the shipped config minus the first-run popup hook (a recording has no tty for display-popup)
 grep -v "set-hook -g session-created" "$REPO/tmux/tmux.conf" > "$HOME/.config/tmux/tmux.conf"
 cp "$REPO/tmux/scripts/"*.sh "$HOME/.config/tmux/scripts/"
-printf '#!/bin/sh\n' > "$HOME/.tmux/plugins/tpm/tpm"; chmod +x "$HOME/.tmux/plugins/tpm/tpm"   # TPM no-op
+# the plugin, exactly as install.sh places it next to TPM
+if [ -n "${FLEETMUX_AGENT_STATUS_SRC:-}" ]; then
+  cp -R "$FLEETMUX_AGENT_STATUS_SRC" "$PLUGIN"
+else
+  git clone -q --depth=1 https://github.com/xiaolongnk/tmux-agent-status "$PLUGIN"
+fi
+# TPM stand-in: just initialise the one plugin the demo needs. That is what swaps the
+# #{agent_status} placeholder in status-right for the probe and binds prefix+Enter/Tab/a/e/g.
+printf '#!/bin/sh\nexec "$HOME/.tmux/plugins/tmux-agent-status/agent-status.tmux"\n' > "$HOME/.tmux/plugins/tpm/tpm"
+chmod +x "$HOME/.tmux/plugins/tpm/tpm"
 # tmux reports #{pane_current_command} from the process name, and a script's process name is
 # its INTERPRETER — so each fake agent is a script whose interpreter is a bash copy named
 # after the agent. That makes the probe detect it exactly as it detects the real binary.
@@ -21,6 +33,7 @@ for a in claude codex gemini; do
 done
 export PATH="$D/bin:$PATH"
 
+AGENT_FRAG="#($PLUGIN/scripts/agent-status.sh)"
 S=demo
 tmux -L "$S" kill-server 2>/dev/null
 if [ "${FLEETMUX_DEMO_LAYOUT:-}" = vertical ]; then
@@ -35,7 +48,7 @@ if [ "${FLEETMUX_DEMO_LAYOUT:-}" = vertical ]; then
   tmux -L "$S" set -g window-status-format ''
   tmux -L "$S" set -g window-status-current-format ''
   tmux -L "$S" set -g status-right-length 58
-  VERT_RIGHT='#(~/.config/tmux/scripts/agent-status.sh)'
+  VERT_RIGHT="$AGENT_FRAG"
 else
   tmux -L "$S" -f "$HOME/.config/tmux/tmux.conf" new-session -d -s agents -n agents -x 150 -y 36 \
     "claude 'Claude Code' busy 'Refactor auth middleware'"
@@ -47,6 +60,8 @@ fi
 tmux -L "$S" select-pane -t agents:agents.1
 tmux -L "$S" set -g status-interval 1
 tmux -L "$S" set -g default-command "env PS1='~/work $ ' bash --norc --noprofile"   # clean prompt, no hostname
-tmux -L "$S" set -g status-right "${VERT_RIGHT:-#(~/.config/tmux/scripts/agent-status.sh)#[fg=colour244] 14:02 #[fg=colour252]fleetmux }"
+# fixed clock + host so the recording is reproducible (the plugin already placed the fragment;
+# this re-states it without continuum's save hook, which has no plugin to call here)
+tmux -L "$S" set -g status-right "${VERT_RIGHT:-$AGENT_FRAG#[fg=colour244] 14:02 #[fg=colour252]fleetmux }"
 clear
 exec tmux -L "$S" attach -t agents

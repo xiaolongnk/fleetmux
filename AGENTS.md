@@ -3,11 +3,18 @@
 fleetmux's status bar and jump bindings work by probing the **command running in each
 pane** of your tmux server. No daemon or background process is required.
 
+Both come from one TPM plugin, [tmux-agent-status](https://github.com/xiaolongnk/tmux-agent-status)
+(`~/.tmux/plugins/tmux-agent-status`, cloned by the installer next to TPM). `tmux.conf`
+declares it with `set -g @plugin 'xiaolongnk/tmux-agent-status'` and leaves a
+`#{agent_status}` placeholder in `status-right`; at TPM init the plugin swaps the placeholder
+for its probe and binds the jump keys. fleetmux ships no copy of the scripts itself — the
+paths below are inside the plugin directory.
+
 ---
 
 ## How detection works
 
-Every 5 seconds, `agent-status.sh` runs inside tmux and executes:
+Every 5 seconds, the plugin's `scripts/agent-status.sh` runs inside tmux and executes:
 
 ```bash
 tmux list-panes -a -F '#{session_name}:#{window_index}.#{pane_index}\t#{pane_current_command}\t#{pane_title}'
@@ -84,29 +91,35 @@ preexec() { print -Pn "\e]2;$1\a"; }
 
 ## Customising the jump bindings
 
-The defaults in `~/.config/tmux/tmux.conf`:
+The keys are plugin options, read when TPM initialises the plugin. The defaults:
+
+| Option | Default | Cycles |
+|---|---|---|
+| `@agent_status_jump_waiting` | `Enter` | agent panes waiting for you (idle or approval prompt) |
+| `@agent_status_jump_any` | `Tab` | every agent pane |
+| `@agent_status_jump_claude` | `a` | Claude Code panes |
+| `@agent_status_jump_codex` | `e` | Codex panes |
+| `@agent_status_jump_gemini` | `g` | Gemini panes |
+| `@agent_status_jump_cursor` | *(unbound)* | Cursor panes |
+
+Override them in `~/.config/tmux/local.conf` (sourced by tmux.conf **before** TPM runs, kept
+across upgrades). `''` leaves a key alone:
 
 ```tmux
-bind a   run-shell "~/.config/tmux/scripts/agent-jump.sh claude"
-bind e   run-shell "~/.config/tmux/scripts/agent-jump.sh codex"
-bind g   run-shell "~/.config/tmux/scripts/agent-jump.sh gemini"
-bind Tab run-shell "~/.config/tmux/scripts/agent-jump.sh any"
+set -g @agent_status_jump_cursor 'u'     # prefix + u → next Cursor pane
+set -g @agent_status_jump_gemini ''      # keep prefix + g for something else
 ```
 
-Add your own in `~/.config/tmux/local.conf` (sourced by tmux.conf, kept across upgrades):
-
-```tmux
-bind u run-shell "~/.config/tmux/scripts/agent-jump.sh cursor"
-```
-
-Reload with `prefix + r`.
+Reload with `prefix + r`. Anything else the plugin's script can do is one `run-shell` away,
+e.g. `bind M-Enter run-shell "~/.tmux/plugins/tmux-agent-status/scripts/agent-jump.sh waiting"`.
 
 ---
 
 ## Adding a new agent
 
-Edit `classify()` in `~/.config/tmux/scripts/agent-status.sh` — one `case` arm per
-command name — and add a counter + indicator line at the bottom:
+The detection table lives in the plugin: edit `classify()` in
+`~/.tmux/plugins/tmux-agent-status/scripts/agent-status.sh` — one `case` arm per command
+name — and add a counter + indicator line at the bottom:
 
 ```bash
     aider)                     echo aider;  return ;;
@@ -114,8 +127,10 @@ command name — and add a counter + indicator line at the bottom:
 [ "$n_aider" -gt 0 ] && out="${out}#[fg=colour46]⬢ Aider ${n_aider}#[fg=colour244]  "
 ```
 
-Reload the config (`prefix + r`) — the new indicator appears at the next poll.
-`test/agent-status.sh` in the repo shows how to assert it against a fixture.
+Reload the config (`prefix + r`) — the new indicator appears at the next poll. Note that
+`prefix + U` (TPM update) will overwrite a local edit, so send it upstream: the plugin's
+`test/agent-status.sh` shows how to assert a new agent against a fixture, and a merged
+change reaches every fleetmux install on its next `prefix + U`.
 
 ---
 
@@ -125,6 +140,16 @@ Pane-title propagation in WSL2 depends on the Windows terminal emulator you
 use. Windows Terminal and Tabby pass pane titles correctly; other emulators may
 not. If detection fails in WSL2, set the title manually with `printf '\033]2;claude\033\\'`
 before starting your agent.
+
+---
+
+## Upgrading from a pre-1.3 install
+
+Earlier installers downloaded `agent-status.sh` and `agent-jump.sh` into
+`~/.config/tmux/scripts/` and hard-wired the jump keys in `tmux.conf`. Re-running the
+installer removes those copies and writes the plugin-based config; `fleetmux-doctor` warns
+if a stale copy is still around. Local edits to the old scripts are not migrated — redo them
+in the plugin (see above).
 
 ---
 

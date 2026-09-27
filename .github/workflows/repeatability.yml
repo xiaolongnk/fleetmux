@@ -24,8 +24,8 @@ jobs:
       - name: Bash syntax check
         run: bash -n bin/install.sh bin/start bin/doctor
 
-      - name: Agent detection unit test
-        run: bash test/agent-status.sh
+      - name: Plugin consumption test (tmux-agent-status, no local script copies)
+        run: bash test/plugin-consumed.sh
 
       - name: Fish preset clean-box test (--with-fish)
         run: bash test/fish-preset.sh
